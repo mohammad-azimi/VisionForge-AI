@@ -1,0 +1,73 @@
+# VisionForge-AI
+
+VisionForge-AI is an AI image-generation studio for creating professional visuals for software projects, portfolios, app icons, GitHub banners, and social media project covers.
+
+The project starts with a text-to-image diffusion pipeline and will gradually evolve into a controlled generation system with style presets, LoRA fine-tuning, ControlNet support, and a GAN baseline for comparison.
+
+## Current Features
+
+- Text-to-image generation with diffusion models
+- Streamlit web interface
+- Project-based prompt builder
+- Style presets for portfolio visuals
+- Negative prompt generation
+- Seed control for reproducible outputs
+- Automatic output saving with metadata
+
+## Planned Features
+
+- LoRA fine-tuning for custom portfolio styles
+- ControlNet support for sketch/layout-guided generation
+- GAN baseline for comparison
+- Image quality dashboard
+- React or FastAPI production version
+- Portfolio-ready project showcase page
+
+## Tech Stack
+
+- Python
+- PyTorch
+- Hugging Face Diffusers
+- Streamlit
+- Pillow
+- Python-dotenv
+
+## Installation
+
+Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+Install dependencies:
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Run the app:
+
+```bash
+streamlit run app.py
+```
+
+## Model Configuration
+
+By default, the project uses a small test model:
+
+```text
+segmind/tiny-sd
+```
+
+This is useful for testing the app structure. For better image quality, change the model later in `.env`:
+
+```text
+VISIONFORGE_MODEL_ID=stabilityai/sd-turbo
+```
+
+## Project Status
+
+This project is under active development.
