@@ -9,6 +9,13 @@ def load_metadata(metadata_path: Path) -> dict:
         return {}
 
 
+def save_metadata(metadata_path: Path, metadata: dict) -> None:
+    metadata_path.write_text(
+        json.dumps(metadata, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 def get_generation_records(output_dir: str = "outputs") -> list[dict]:
     output_path = Path(output_dir)
 
@@ -33,10 +40,38 @@ def get_generation_records(output_dir: str = "outputs") -> list[dict]:
                 "seed": metadata.get("seed", "unknown"),
                 "width": metadata.get("width", "unknown"),
                 "height": metadata.get("height", "unknown"),
+                "project_name": metadata.get("project_name", "unknown"),
+                "output_type": metadata.get("output_type", "unknown"),
+                "style": metadata.get("style", "unknown"),
+                "favorite": bool(metadata.get("favorite", False)),
+                "created_at_text": metadata.get("created_at", "unknown"),
             }
         )
 
     return sorted(records, key=lambda item: item["created_at"], reverse=True)
+
+
+def toggle_favorite(metadata_path: Path) -> bool:
+    metadata = load_metadata(metadata_path)
+    metadata["favorite"] = not bool(metadata.get("favorite", False))
+    save_metadata(metadata_path, metadata)
+    return metadata["favorite"]
+
+
+def delete_generation(image_path: Path) -> int:
+    deleted_count = 0
+
+    metadata_path = image_path.with_suffix(".json")
+
+    if image_path.exists():
+        image_path.unlink()
+        deleted_count += 1
+
+    if metadata_path.exists():
+        metadata_path.unlink()
+        deleted_count += 1
+
+    return deleted_count
 
 
 def clear_generation_history(output_dir: str = "outputs") -> int:
@@ -47,7 +82,7 @@ def clear_generation_history(output_dir: str = "outputs") -> int:
 
     deleted_count = 0
 
-    for file_path in output_path.glob("visionforge_*"):
+    for file_path in output_path.glob("*"):
         if file_path.suffix.lower() in {".png", ".json"}:
             file_path.unlink()
             deleted_count += 1

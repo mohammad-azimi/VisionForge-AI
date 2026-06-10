@@ -5,7 +5,10 @@ STYLE_PRESETS = {
     "Mobile App Icon": "mobile app icon style, centered symbol, rounded shapes, clean vector-like composition",
     "GitHub Banner": "wide software project banner, developer-focused, clean layout, technical visual language",
     "LinkedIn Showcase": "professional social media project showcase, polished presentation, portfolio-ready composition",
+    "Dark Futuristic": "dark futuristic interface, glowing data streams, premium artificial intelligence atmosphere",
+    "Clean Dashboard": "clean dashboard visualization, modern software interface, organized cards, subtle depth",
 }
+
 
 CATEGORY_PRESETS = {
     "AI Healthcare": "artificial intelligence healthcare system, medical data, patient safety, monitoring dashboard",
@@ -14,7 +17,9 @@ CATEGORY_PRESETS = {
     "Chess AI": "intelligent chess agent, strategy, neural decision-making, chessboard visualization",
     "Productivity App": "modern productivity application, habit tracking, daily goals, progress visualization",
     "Marketplace": "digital marketplace dashboard, product cards, analytics, modern web interface",
+    "AI Image Generation": "diffusion model image generation studio, creative artificial intelligence, visual synthesis",
 }
+
 
 OUTPUT_PRESETS = {
     "Portfolio Project Cover": "hero image for a developer portfolio project card",
@@ -22,6 +27,7 @@ OUTPUT_PRESETS = {
     "App Icon": "minimal app icon, centered symbol, simple shape language",
     "LinkedIn Post Image": "professional project announcement image for LinkedIn",
     "Website Hero": "landing page hero image for a software project",
+    "Experiment Preview": "clean visual preview for an AI experiment result",
 }
 
 
@@ -45,6 +51,7 @@ def build_prompt(
         style_text,
         f"color palette: {color_palette}",
         "high quality, sharp details, balanced spacing, professional portfolio presentation",
+        "clean background, strong focal point, modern software product visual",
         "no text, no watermark, no logo, no distorted UI",
     ]
 
@@ -66,9 +73,43 @@ def build_negative_prompt(custom_negative_prompt: str = "") -> str:
         "logo",
         "ugly",
         "noisy",
+        "overcrowded",
+        "unreadable interface",
     ]
 
     if custom_negative_prompt.strip():
         base_negative_prompt.append(custom_negative_prompt.strip())
 
     return ", ".join(base_negative_prompt)
+
+
+def build_prompt_bundle(
+    project_name: str,
+    category: str,
+    output_type: str,
+    style: str,
+    color_palette: str,
+    user_prompt: str,
+    custom_negative_prompt: str = "",
+) -> dict:
+    prompt = build_prompt(
+        project_name=project_name,
+        category=category,
+        output_type=output_type,
+        style=style,
+        color_palette=color_palette,
+        user_prompt=user_prompt,
+    )
+
+    negative_prompt = build_negative_prompt(custom_negative_prompt)
+
+    return {
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "project_name": project_name,
+        "category": category,
+        "output_type": output_type,
+        "style": style,
+        "color_palette": color_palette,
+        "user_prompt": user_prompt,
+    }

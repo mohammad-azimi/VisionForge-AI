@@ -13,9 +13,13 @@ The project starts with a text-to-image diffusion pipeline and gradually evolves
 - Style presets for portfolio visuals
 - Negative prompt generation
 - Seed control for reproducible outputs
+- Batch image variation generation
 - Automatic output saving with metadata
 - Local output gallery
+- Favorite and delete actions for generated images
 - Prompt Lab for previewing generated prompts
+- Prompt quality checklist
+- Experiment dashboard for comparing outputs
 
 ## Project Presets
 
@@ -25,7 +29,19 @@ The app currently includes presets for:
 - ChessRL-Agent
 - Habit Tracker
 - MarketBoard
+- VisionForge-AI
 - Custom projects
+
+## Size Presets
+
+The app includes canvas presets for:
+
+- Square portfolio covers
+- GitHub README banners
+- LinkedIn post images
+- App icons
+- Website hero images
+- Custom sizes
 
 ## Planned Features
 
@@ -64,18 +80,18 @@ pip install -r requirements.txt
 Run the app:
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 ## Model Configuration
 
-By default, the project uses a small test model:
+The default fast test model is:
 
 ```text
-segmind/tiny-sd
+hf-internal-testing/tiny-stable-diffusion-pipe
 ```
 
-This is useful for testing the app structure. For better image quality, you can try a stronger model from the sidebar.
+This model is useful for testing the app structure. For better image quality, you can try a stronger model from the sidebar.
 
 ## Output Files
 
