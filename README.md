@@ -7,6 +7,7 @@ The project starts with a text-to-image diffusion pipeline and gradually evolves
 ## Current Features
 
 - Text-to-image generation with diffusion models
+- Image-to-image generation from uploaded reference images
 - Streamlit web interface
 - Project-based prompt builder
 - Ready-to-use project presets
@@ -20,6 +21,7 @@ The project starts with a text-to-image diffusion pipeline and gradually evolves
 - Prompt Lab for previewing generated prompts
 - Prompt quality checklist
 - Experiment dashboard for comparing outputs
+- Generation mode tracking for text-to-image and image-to-image
 
 ## Project Presets
 
@@ -36,6 +38,7 @@ The app currently includes presets for:
 
 The app includes canvas presets for:
 
+- CPU quick test
 - Square portfolio covers
 - GitHub README banners
 - LinkedIn post images

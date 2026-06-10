@@ -1,3 +1,9 @@
+from pathlib import Path
+import textwrap
+
+path = Path("src/visionforge/generator.py")
+
+content = r'''
 from dataclasses import dataclass, asdict, replace
 from datetime import datetime
 from pathlib import Path
@@ -395,3 +401,7 @@ def generate_batch_from_image(
         )
 
     return records
+'''
+
+path.write_text(textwrap.dedent(content).strip() + "\n", encoding="utf-8")
+print("Rewrote src/visionforge/generator.py with the fixed step 4 generator.")

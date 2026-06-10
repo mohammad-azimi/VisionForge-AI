@@ -45,6 +45,8 @@ def get_generation_records(output_dir: str = "outputs") -> list[dict]:
                 "style": metadata.get("style", "unknown"),
                 "favorite": bool(metadata.get("favorite", False)),
                 "created_at_text": metadata.get("created_at", "unknown"),
+                "generation_mode": metadata.get("generation_mode", "text-to-image"),
+                "strength": metadata.get("strength", None),
             }
         )
 
