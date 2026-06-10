@@ -52,8 +52,8 @@ PROJECT_PRESETS = {
         "category": "AI Healthcare",
         "output_type": "Portfolio Project Cover",
         "style": "Medical Tech",
-        "color_palette": "deep blue, cyan, white",
-        "idea": "Futuristic AI healthcare dashboard monitoring glucose levels, medical data visualization, safe control signals, premium interface.",
+        "color_palette": "deep navy, cyan, white, soft blue glow",
+        "idea": "Abstract AI healthcare concept with a glowing glucose curve, neural network particles, medical signal waves, clean futuristic background.",
     },
     "ChessRL-Agent": {
         "project_name": "ChessRL-Agent",
@@ -61,7 +61,7 @@ PROJECT_PRESETS = {
         "output_type": "Portfolio Project Cover",
         "style": "Cinematic AI",
         "color_palette": "black, white, silver, electric blue",
-        "idea": "Neural chess agent thinking over a modern chessboard, strategy visualization, glowing decision paths, cinematic AI atmosphere.",
+        "idea": "Cinematic chessboard with a glowing AI brain above the pieces, strategic decision paths, dark futuristic atmosphere.",
     },
     "Habit Tracker": {
         "project_name": "Habit Tracker",
@@ -69,15 +69,15 @@ PROJECT_PRESETS = {
         "output_type": "App Icon",
         "style": "Mobile App Icon",
         "color_palette": "violet, indigo, soft white",
-        "idea": "Clean habit tracking app icon with progress ring, daily goal symbol, modern productivity design.",
+        "idea": "Minimal symbolic habit tracking icon with a progress ring, check mark, daily goal symbol, clean rounded shape.",
     },
     "MarketBoard": {
         "project_name": "MarketBoard",
         "category": "Marketplace",
         "output_type": "Website Hero",
-        "style": "GitHub Banner",
+        "style": "Clean Dashboard",
         "color_palette": "dark navy, cyan, white",
-        "idea": "Modern marketplace dashboard with product cards, analytics panels, clean web interface, professional software presentation.",
+        "idea": "Abstract digital marketplace concept with floating product cards, analytics shapes, clean geometric composition, no readable interface.",
     },
     "VisionForge-AI": {
         "project_name": "VisionForge-AI",
@@ -85,7 +85,7 @@ PROJECT_PRESETS = {
         "output_type": "Portfolio Project Cover",
         "style": "Premium Minimal",
         "color_palette": "black, white, graphite, soft blue",
-        "idea": "Premium AI image generation studio for project covers, app icons, GitHub banners, and portfolio visuals.",
+        "idea": "Premium AI image generation studio concept with glowing diffusion particles, abstract camera lens, creative neural network.",
     },
     "Custom": {
         "project_name": "Custom AI Project",
@@ -93,6 +93,6 @@ PROJECT_PRESETS = {
         "output_type": "Portfolio Project Cover",
         "style": "Premium Minimal",
         "color_palette": "black, white, graphite, soft blue",
-        "idea": "Professional AI-generated visual for a software project.",
+        "idea": "Professional abstract AI project cover with neural network particles, clean background, premium technology visual.",
     },
 }
