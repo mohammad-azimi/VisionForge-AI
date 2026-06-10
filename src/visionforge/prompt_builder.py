@@ -1,23 +1,68 @@
 STYLE_PRESETS = {
-    "Premium Minimal": "premium minimal design, clean composition, soft gradients, elegant lighting, modern editorial technology art",
-    "Cinematic AI": "cinematic artificial intelligence concept art, dramatic lighting, futuristic atmosphere, sharp details",
-    "Medical Tech": "clean medical technology concept, soft clinical glow, trustworthy healthcare mood, abstract data particles",
-    "Mobile App Icon": "modern app icon symbol, centered object, rounded geometric shape, clean vector-like style",
-    "GitHub Banner": "wide developer project banner, clean technical composition, abstract software concept art",
-    "LinkedIn Showcase": "professional portfolio showcase image, polished technology presentation, premium visual style",
-    "Dark Futuristic": "dark futuristic technology art, glowing data streams, premium AI atmosphere",
-    "Clean Dashboard": "clean abstract analytics concept, floating geometric cards, subtle depth, modern software aesthetic",
+    "Premium Minimal": (
+        "premium minimal technology art, clean composition, elegant lighting, "
+        "soft gradients, modern editorial visual style"
+    ),
+    "Cinematic AI": (
+        "cinematic artificial intelligence concept art, dramatic lighting, "
+        "futuristic atmosphere, sharp details, strong depth"
+    ),
+    "Medical Tech": (
+        "clean medical technology concept art, clinical blue glow, "
+        "trustworthy healthcare mood, futuristic precision"
+    ),
+    "Mobile App Icon": (
+        "modern app icon design, centered symbol, rounded geometric forms, "
+        "clean vector-like appearance"
+    ),
+    "GitHub Banner": (
+        "wide developer project banner style, clean technical composition, "
+        "modern software showcase visual"
+    ),
+    "LinkedIn Showcase": (
+        "professional portfolio showcase image, polished presentation, "
+        "premium visual quality"
+    ),
+    "Dark Futuristic": (
+        "dark futuristic technology art, glowing data streams, "
+        "premium AI atmosphere, strong contrast"
+    ),
+    "Clean Dashboard": (
+        "clean abstract analytics visual, floating structured panels, "
+        "modern software aesthetic, subtle depth"
+    ),
 }
 
 
 CATEGORY_PRESETS = {
-    "AI Healthcare": "AI healthcare concept, glucose curve, medical signal waves, neural network, patient safety",
-    "Reinforcement Learning": "reinforcement learning concept, intelligent agent, reward signal, decision paths, control system",
-    "Computer Vision": "computer vision concept, neural image analysis, visual recognition, abstract lens",
-    "Chess AI": "AI chess concept, chessboard, neural strategy, decision paths, intelligent game agent",
-    "Productivity App": "productivity concept, habit progress, goal tracking, clean symbolic design",
-    "Marketplace": "digital marketplace concept, product cards, analytics shapes, modern commerce system",
-    "AI Image Generation": "diffusion image generation concept, creative AI, visual synthesis, glowing particles",
+    "AI Healthcare": (
+        "AI healthcare system, glucose monitoring, intelligent control, "
+        "medical analytics, patient safety"
+    ),
+    "Reinforcement Learning": (
+        "reinforcement learning agent, reward-driven decision system, "
+        "intelligent control, optimization"
+    ),
+    "Computer Vision": (
+        "computer vision concept, neural image analysis, visual recognition, "
+        "advanced perception system"
+    ),
+    "Chess AI": (
+        "AI chess system, strategic reasoning, neural decision paths, "
+        "intelligent gameplay"
+    ),
+    "Productivity App": (
+        "productivity concept, habit progress, daily goals, "
+        "organized clean design"
+    ),
+    "Marketplace": (
+        "digital marketplace system, commerce flow, analytics, "
+        "modern product ecosystem"
+    ),
+    "AI Image Generation": (
+        "diffusion-based image generation concept, creative AI, "
+        "visual synthesis, generative technology"
+    ),
 }
 
 
@@ -31,9 +76,10 @@ OUTPUT_PRESETS = {
 }
 
 
-GLOBAL_POSITIVE_STYLE = (
-    "high quality, sharp details, clean background, strong focal point, "
-    "professional portfolio visual, modern technology art, no readable text"
+GLOBAL_QUALITY_SUFFIX = (
+    "high quality, sharp details, strong focal point, centered composition, "
+    "clean background, professional portfolio visual, visually clear subject, "
+    "modern technology art, no readable text"
 )
 
 
@@ -50,18 +96,16 @@ def build_prompt(
     style_text = STYLE_PRESETS.get(style, "")
 
     short_user_prompt = user_prompt.strip()
-    if len(short_user_prompt) > 180:
-        short_user_prompt = short_user_prompt[:180].rsplit(" ", 1)[0]
+    if len(short_user_prompt) > 220:
+        short_user_prompt = short_user_prompt[:220].rsplit(" ", 1)[0]
 
-    # Do not strongly force the project name into the image.
-    # Diffusion models often try to render it as broken text.
     prompt_parts = [
         output_text,
         category_text,
         short_user_prompt,
         style_text,
         f"color palette: {color_palette}",
-        GLOBAL_POSITIVE_STYLE,
+        GLOBAL_QUALITY_SUFFIX,
     ]
 
     return ", ".join(part.strip() for part in prompt_parts if part.strip())
@@ -74,7 +118,6 @@ def build_negative_prompt(custom_negative_prompt: str = "") -> str:
         "words",
         "numbers",
         "caption",
-        "label",
         "watermark",
         "signature",
         "logo",
@@ -84,16 +127,21 @@ def build_negative_prompt(custom_negative_prompt: str = "") -> str:
         "tablet",
         "laptop screen",
         "computer screen",
-        "screenshot",
         "browser window",
+        "screenshot",
         "mobile UI",
         "user interface",
+        "dashboard screenshot",
         "menu",
         "button",
         "fake app screen",
         "distorted text",
         "random letters",
         "unreadable text",
+        "abstract stripes",
+        "repetitive lines",
+        "grid pattern",
+        "overly abstract",
         "low quality",
         "blurry",
         "pixelated",
