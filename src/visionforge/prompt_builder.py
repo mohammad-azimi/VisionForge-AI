@@ -1,33 +1,33 @@
 STYLE_PRESETS = {
-    "Premium Minimal": "premium minimalist design, clean composition, elegant lighting, soft gradients, modern editorial look",
-    "Cinematic AI": "cinematic technology scene, dramatic lighting, high-end concept art, futuristic atmosphere",
-    "Medical Tech": "clean medical technology visual, clinical interface, health data visualization, trustworthy design",
-    "Mobile App Icon": "mobile app icon style, centered symbol, rounded shapes, clean vector-like composition",
-    "GitHub Banner": "wide software project banner, developer-focused, clean layout, technical visual language",
-    "LinkedIn Showcase": "professional social media project showcase, polished presentation, portfolio-ready composition",
-    "Dark Futuristic": "dark futuristic interface, glowing data streams, premium artificial intelligence atmosphere",
-    "Clean Dashboard": "clean dashboard visualization, modern software interface, organized cards, subtle depth",
+    "Premium Minimal": "premium minimal design, clean composition, soft gradients, elegant lighting",
+    "Cinematic AI": "cinematic artificial intelligence scene, dramatic lighting, futuristic atmosphere, detailed concept art",
+    "Medical Tech": "clean medical technology interface, clinical dashboard, trustworthy healthcare design, soft glow",
+    "Mobile App Icon": "modern mobile app icon, centered symbol, rounded shapes, clean vector style",
+    "GitHub Banner": "wide developer banner, clean technical composition, software project showcase",
+    "LinkedIn Showcase": "professional social media showcase image, polished portfolio presentation",
+    "Dark Futuristic": "dark futuristic interface, glowing data streams, premium AI atmosphere",
+    "Clean Dashboard": "clean dashboard UI, organized cards, subtle depth, modern analytics interface",
 }
 
 
 CATEGORY_PRESETS = {
-    "AI Healthcare": "artificial intelligence healthcare system, medical data, patient safety, monitoring dashboard",
-    "Reinforcement Learning": "reinforcement learning agent, decision-making system, reward signal, intelligent control",
-    "Computer Vision": "computer vision system, visual recognition, neural network, image analysis",
-    "Chess AI": "intelligent chess agent, strategy, neural decision-making, chessboard visualization",
-    "Productivity App": "modern productivity application, habit tracking, daily goals, progress visualization",
-    "Marketplace": "digital marketplace dashboard, product cards, analytics, modern web interface",
-    "AI Image Generation": "diffusion model image generation studio, creative artificial intelligence, visual synthesis",
+    "AI Healthcare": "AI healthcare system, glucose monitoring, medical analytics, patient safety",
+    "Reinforcement Learning": "reinforcement learning agent, reward signal, decision-making system, intelligent control",
+    "Computer Vision": "computer vision system, neural image analysis, visual recognition",
+    "Chess AI": "AI chess agent, chessboard, strategy visualization, neural decision-making",
+    "Productivity App": "habit tracking app, daily goals, progress visualization",
+    "Marketplace": "marketplace dashboard, product cards, analytics UI",
+    "AI Image Generation": "diffusion image generation studio, creative AI, visual synthesis",
 }
 
 
 OUTPUT_PRESETS = {
-    "Portfolio Project Cover": "hero image for a developer portfolio project card",
-    "GitHub README Banner": "professional banner for a GitHub README file",
-    "App Icon": "minimal app icon, centered symbol, simple shape language",
-    "LinkedIn Post Image": "professional project announcement image for LinkedIn",
-    "Website Hero": "landing page hero image for a software project",
-    "Experiment Preview": "clean visual preview for an AI experiment result",
+    "Portfolio Project Cover": "portfolio project cover image",
+    "GitHub README Banner": "GitHub README banner image",
+    "App Icon": "minimal app icon",
+    "LinkedIn Post Image": "LinkedIn project announcement image",
+    "Website Hero": "software website hero image",
+    "Experiment Preview": "AI experiment preview image",
 }
 
 
@@ -39,20 +39,23 @@ def build_prompt(
     color_palette: str,
     user_prompt: str,
 ) -> str:
-    style_text = STYLE_PRESETS.get(style, "")
-    category_text = CATEGORY_PRESETS.get(category, "")
     output_text = OUTPUT_PRESETS.get(output_type, "")
+    category_text = CATEGORY_PRESETS.get(category, "")
+    style_text = STYLE_PRESETS.get(style, "")
+
+    short_user_prompt = user_prompt.strip()
+    if len(short_user_prompt) > 220:
+        short_user_prompt = short_user_prompt[:220].rsplit(" ", 1)[0]
 
     prompt_parts = [
         output_text,
-        f"for a project called {project_name}",
+        project_name,
         category_text,
-        user_prompt,
+        short_user_prompt,
         style_text,
         f"color palette: {color_palette}",
-        "high quality, sharp details, balanced spacing, professional portfolio presentation",
-        "clean background, strong focal point, modern software product visual",
-        "no text, no watermark, no logo, no distorted UI",
+        "high quality, sharp details, clean background, professional portfolio visual",
+        "no text, no watermark, no logo",
     ]
 
     return ", ".join(part.strip() for part in prompt_parts if part.strip())
@@ -64,17 +67,14 @@ def build_negative_prompt(custom_negative_prompt: str = "") -> str:
         "blurry",
         "pixelated",
         "messy composition",
-        "bad anatomy",
-        "extra fingers",
         "distorted text",
         "random letters",
         "watermark",
-        "signature",
         "logo",
+        "signature",
+        "bad anatomy",
         "ugly",
-        "noisy",
-        "overcrowded",
-        "unreadable interface",
+        "noise",
     ]
 
     if custom_negative_prompt.strip():
