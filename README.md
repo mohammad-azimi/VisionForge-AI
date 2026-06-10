@@ -2,17 +2,30 @@
 
 VisionForge-AI is an AI image-generation studio for creating professional visuals for software projects, portfolios, app icons, GitHub banners, and social media project covers.
 
-The project starts with a text-to-image diffusion pipeline and will gradually evolve into a controlled generation system with style presets, LoRA fine-tuning, ControlNet support, and a GAN baseline for comparison.
+The project starts with a text-to-image diffusion pipeline and gradually evolves into a controlled generation system with style presets, LoRA fine-tuning, ControlNet support, and a GAN baseline for comparison.
 
 ## Current Features
 
 - Text-to-image generation with diffusion models
 - Streamlit web interface
 - Project-based prompt builder
+- Ready-to-use project presets
 - Style presets for portfolio visuals
 - Negative prompt generation
 - Seed control for reproducible outputs
 - Automatic output saving with metadata
+- Local output gallery
+- Prompt Lab for previewing generated prompts
+
+## Project Presets
+
+The app currently includes presets for:
+
+- GlucoPilot-RL
+- ChessRL-Agent
+- Habit Tracker
+- MarketBoard
+- Custom projects
 
 ## Planned Features
 
@@ -62,11 +75,17 @@ By default, the project uses a small test model:
 segmind/tiny-sd
 ```
 
-This is useful for testing the app structure. For better image quality, change the model later in `.env`:
+This is useful for testing the app structure. For better image quality, you can try a stronger model from the sidebar.
+
+## Output Files
+
+Generated images and metadata are saved locally inside:
 
 ```text
-VISIONFORGE_MODEL_ID=stabilityai/sd-turbo
+outputs/
 ```
+
+This folder is ignored by Git because generated images can become large.
 
 ## Project Status
 
