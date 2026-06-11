@@ -1,44 +1,83 @@
 # VisionForge-AI
 
-VisionForge-AI is an AI image-generation studio for creating professional visuals for software projects, portfolios, app icons, GitHub banners, and social media project covers.
+VisionForge-AI is a diffusion-based image generation studio for creating professional visuals for software projects, portfolio cards, GitHub banners, app icons, and project showcase images.
 
-The project starts with a text-to-image diffusion pipeline and gradually evolves into a controlled generation system with style presets, LoRA fine-tuning, ControlNet support, and a GAN baseline for comparison.
+The project focuses on controlled portfolio-oriented image generation. It combines text-to-image generation, image-to-image generation, project-specific prompt presets, reproducible seeds, output metadata, and an experiment gallery.
 
-## Current Features
+![GlucoPilot-RL symbolic cover](assets/examples/glucopilot-symbolic-cover.png)
 
-- Text-to-image generation with diffusion models
-- Image-to-image generation from uploaded reference images
-- Streamlit web interface
-- Project-based prompt builder
-- Ready-to-use project presets
+## Overview
+
+VisionForge-AI was built as a practical AI image-generation tool for software project presentation. Instead of generating random images from generic prompts, it provides structured presets for real portfolio projects and helps create cleaner, more consistent visual outputs.
+
+The first version supports:
+
+- Text-to-image generation
+- Image-to-image generation
+- GPU-accelerated diffusion inference
+- Project-specific prompt presets
 - Style presets for portfolio visuals
 - Negative prompt generation
-- Seed control for reproducible outputs
-- Batch image variation generation
-- Automatic output saving with metadata
+- Batch variation generation
+- Seed-based reproducibility
 - Local output gallery
 - Favorite and delete actions for generated images
-- Prompt Lab for previewing generated prompts
-- Prompt quality checklist
-- Experiment dashboard for comparing outputs
-- Generation mode tracking for text-to-image and image-to-image
+- Prompt Lab for prompt inspection
+- Experiment dashboard with metadata tracking
 
-## Project Presets
+## Project Motivation
 
-The app currently includes presets for:
+Portfolio projects often need strong visuals, but manually designing covers, banners, and app preview images can be time-consuming. VisionForge-AI solves this by providing a local image-generation workflow focused on software project presentation.
+
+The system is especially useful for generating visuals for:
+
+- AI and machine learning projects
+- Reinforcement learning projects
+- Computer vision projects
+- Healthcare AI projects
+- Productivity apps
+- Marketplace dashboards
+- GitHub README banners
+- LinkedIn project posts
+
+## Current Project Presets
+
+VisionForge-AI currently includes presets for:
 
 - GlucoPilot-RL
 - ChessRL-Agent
 - Habit Tracker
 - MarketBoard
 - VisionForge-AI
-- Custom projects
+- Custom AI projects
+
+## Generation Modes
+
+### Text-to-Image
+
+The user selects a project preset, output type, visual style, color palette, and prompt. The app builds a structured final prompt and generates one or more image variations.
+
+### Image-to-Image
+
+The user uploads a reference image and guides the model with a new prompt. The strength slider controls how strongly the generated output follows or changes the original image.
+
+## Model Presets
+
+The app supports multiple model presets:
+
+- SD 1.5 Quality
+- SD Turbo Fast
+- Small SD model
+- Technical test model
+- Custom Hugging Face model ID
+
+The technical test model is only for checking that the app pipeline works. For real outputs, use SD 1.5 Quality or another production-quality diffusion model.
 
 ## Size Presets
 
 The app includes canvas presets for:
 
-- CPU quick test
+- GPU quick tests
 - Square portfolio covers
 - GitHub README banners
 - LinkedIn post images
@@ -46,25 +85,24 @@ The app includes canvas presets for:
 - Website hero images
 - Custom sizes
 
-## Planned Features
-
-- LoRA fine-tuning for custom portfolio styles
-- ControlNet support for sketch/layout-guided generation
-- GAN baseline for comparison
-- Image quality dashboard
-- React or FastAPI production version
-- Portfolio-ready project showcase page
-
 ## Tech Stack
 
 - Python
 - PyTorch
 - Hugging Face Diffusers
+- Transformers
 - Streamlit
 - Pillow
 - Python-dotenv
 
 ## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/mohammad-azimi/VisionForge-AI.git
+cd VisionForge-AI
+```
 
 Create and activate a virtual environment:
 
@@ -77,35 +115,98 @@ Install dependencies:
 
 ```bash
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-Run the app:
+## GPU Setup
+
+For NVIDIA GPU acceleration, install a CUDA-compatible PyTorch build. Example:
+
+```bash
+python -m pip uninstall torch torchvision torchaudio -y
+python -m pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118
+```
+
+Verify CUDA:
+
+```bash
+python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU')"
+```
+
+## Running the App
 
 ```bash
 python -m streamlit run app.py
 ```
 
-## Model Configuration
+The app will open locally in the browser.
 
-The default fast test model is:
+## Recommended Settings
+
+For better quality portfolio covers:
 
 ```text
-hf-internal-testing/tiny-stable-diffusion-pipe
+Model preset: SD 1.5 Quality
+Size preset: Square Cover
+Number of variations: 1
+Inference steps: 35
+Guidance scale: 7.5
 ```
 
-This model is useful for testing the app structure. For better image quality, you can try a stronger model from the sidebar.
+For fast testing:
+
+```text
+Model preset: SD Turbo Fast
+Size preset: GPU Quick Test
+Number of variations: 1
+Inference steps: 4
+Guidance scale: 0
+```
 
 ## Output Files
 
-Generated images and metadata are saved locally inside:
+Generated images and metadata are saved locally in:
 
 ```text
 outputs/
 ```
 
-This folder is ignored by Git because generated images can become large.
+This folder is ignored by Git because generated images can become large. Selected showcase examples can be copied into:
 
-## Project Status
+```text
+assets/examples/
+```
 
-This project is under active development.
+## Project Structure
+
+```text
+VisionForge-AI/
+├── app.py
+├── requirements.txt
+├── README.md
+├── assets/
+│   └── examples/
+└── src/
+    └── visionforge/
+        ├── generator.py
+        ├── history.py
+        ├── presets.py
+        ├── prompt_builder.py
+        └── prompt_tools.py
+```
+
+## Roadmap
+
+Planned improvements:
+
+- LoRA fine-tuning for a custom portfolio visual style
+- ControlNet support for layout-guided generation
+- GAN baseline for comparison with diffusion outputs
+- Better image ranking and quality scoring
+- Exportable experiment reports
+- More project-specific prompt modes
+- Production-ready API version with FastAPI
+
+## Status
+
+VisionForge-AI is currently in MVP stage. The app is functional, supports real diffusion models, and can generate portfolio-ready project visuals with structured prompts and local experiment tracking.
