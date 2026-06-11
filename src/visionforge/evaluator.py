@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from .face_evaluator import evaluate_faces
+
 
 DEFAULT_CLIP_MODEL_ID = "openai/clip-vit-base-patch32"
 
@@ -122,11 +124,6 @@ def compute_clutter_penalty(arr: np.ndarray) -> float:
 
 
 def compute_radial_artifact_penalty(arr: np.ndarray) -> float:
-    """
-    Penalizes repeated circular / eye-like / portal-like patterns.
-
-    This is optional because some projects intentionally use circular symbols.
-    """
     gray = arr.mean(axis=2)
     height, width = gray.shape
     center_y = height / 2.0
@@ -246,10 +243,6 @@ def normalized_clip_features_for_text(text: str, model_id: str = DEFAULT_CLIP_MO
 
 
 def clip_cosine_to_score(cosine_value: float, mode: str) -> float:
-    """
-    Converts CLIP cosine similarity into a practical ranking score.
-    These scores are calibrated for ranking candidates, not absolute scientific measurement.
-    """
     if mode == "text":
         return clamp_score((cosine_value - 0.15) / 0.20 * 100.0)
 
@@ -294,82 +287,103 @@ def compute_clip_reference_similarity(
     return clip_cosine_to_score(cosine, mode="image")
 
 
+def merged_reference_score(
+    reference_similarity: float | None,
+    clip_reference_similarity: float | None,
+) -> float | None:
+    if reference_similarity is not None and clip_reference_similarity is not None:
+        return reference_similarity * 0.35 + clip_reference_similarity * 0.65
+
+    if clip_reference_similarity is not None:
+        return clip_reference_similarity
+
+    return reference_similarity
+
+
 def combine_scores(
     visual_quality_score: float,
     prompt_alignment_score: float | None,
     reference_similarity: float | None,
     clip_reference_similarity: float | None,
+    face_quality_score: float | None,
+    face_reference_similarity: float | None,
+    face_count: int | None,
     evaluation_profile: str,
 ) -> float:
     profile = evaluation_profile.lower().strip()
-
     prompt_score = prompt_alignment_score
-    ref_score = reference_similarity
-
-    if clip_reference_similarity is not None and reference_similarity is not None:
-        ref_score = reference_similarity * 0.35 + clip_reference_similarity * 0.65
-    elif clip_reference_similarity is not None:
-        ref_score = clip_reference_similarity
+    ref_score = merged_reference_score(reference_similarity, clip_reference_similarity)
 
     if profile == "reference_match":
-        score = visual_quality_score * 0.25
+        score = visual_quality_score * 0.20
 
-        if ref_score is not None:
-            score += ref_score * 0.60
-        else:
-            score += visual_quality_score * 0.35
+        score += (ref_score if ref_score is not None else visual_quality_score) * 0.42
+        score += (prompt_score if prompt_score is not None else visual_quality_score) * 0.13
 
-        if prompt_score is not None:
-            score += prompt_score * 0.15
+        if face_reference_similarity is not None:
+            score += face_reference_similarity * 0.20
+        elif face_quality_score is not None:
+            score += face_quality_score * 0.10
+            score += visual_quality_score * 0.10
         else:
-            score += visual_quality_score * 0.15
+            score += visual_quality_score * 0.20
+
+        if face_count == 0:
+            score -= 8.0
 
         return clamp_score(score)
 
     if profile == "portrait":
-        score = visual_quality_score * 0.40
+        score = visual_quality_score * 0.25
+        score += (prompt_score if prompt_score is not None else visual_quality_score) * 0.15
+        score += (ref_score if ref_score is not None else visual_quality_score) * 0.15
 
-        if prompt_score is not None:
-            score += prompt_score * 0.35
+        if face_quality_score is not None:
+            score += face_quality_score * 0.30
         else:
-            score += visual_quality_score * 0.20
+            score += visual_quality_score * 0.15
+            score -= 12.0
 
-        if ref_score is not None:
-            score += ref_score * 0.25
+        if face_reference_similarity is not None:
+            score += face_reference_similarity * 0.15
         else:
-            score += visual_quality_score * 0.25
+            score += visual_quality_score * 0.15
+
+        if face_count and face_count > 1:
+            score -= min(14.0, (face_count - 1) * 7.0)
 
         return clamp_score(score)
 
     if profile == "general":
-        score = visual_quality_score * 0.55
+        score = visual_quality_score * 0.52
+        score += (prompt_score if prompt_score is not None else visual_quality_score) * 0.32
+        score += (ref_score if ref_score is not None else visual_quality_score) * 0.10
 
-        if prompt_score is not None:
-            score += prompt_score * 0.35
+        if face_quality_score is not None:
+            score += face_quality_score * 0.06
         else:
-            score += visual_quality_score * 0.25
-
-        if ref_score is not None:
-            score += ref_score * 0.10
-        else:
-            score += visual_quality_score * 0.10
+            score += visual_quality_score * 0.06
 
         return clamp_score(score)
 
-    # Default: portfolio cover
-    score = visual_quality_score * 0.65
+    score = visual_quality_score * 0.62
+    score += (prompt_score if prompt_score is not None else visual_quality_score) * 0.24
+    score += (ref_score if ref_score is not None else visual_quality_score) * 0.08
 
-    if prompt_score is not None:
-        score += prompt_score * 0.25
+    if face_quality_score is not None:
+        score += face_quality_score * 0.06
     else:
-        score += visual_quality_score * 0.20
-
-    if ref_score is not None:
-        score += ref_score * 0.10
-    else:
-        score += visual_quality_score * 0.10
+        score += visual_quality_score * 0.06
 
     return clamp_score(score)
+
+
+def should_run_face_evaluator(
+    evaluation_profile: str,
+    reference_image_path: str | Path | None,
+) -> bool:
+    profile = evaluation_profile.lower().strip()
+    return profile in {"portrait", "reference_match"} or reference_image_path is not None
 
 
 def evaluate_image(
@@ -427,11 +441,30 @@ def evaluate_image(
         except Exception as exc:
             clip_error = str(exc)
 
+    face_data = {
+        "face_evaluator_available": None,
+        "face_error": None,
+        "face_count": None,
+        "main_face_box": None,
+        "face_quality_score": None,
+        "reference_face_count": None,
+        "face_reference_similarity": None,
+    }
+
+    if should_run_face_evaluator(evaluation_profile, reference_image_path):
+        face_data = evaluate_faces(
+            image_path=image_path,
+            reference_image_path=reference_image_path,
+        )
+
     final_score = combine_scores(
         visual_quality_score=visual_quality_score,
         prompt_alignment_score=prompt_alignment_score,
         reference_similarity=reference_similarity,
         clip_reference_similarity=clip_reference_similarity,
+        face_quality_score=face_data.get("face_quality_score"),
+        face_reference_similarity=face_data.get("face_reference_similarity"),
+        face_count=face_data.get("face_count"),
         evaluation_profile=evaluation_profile,
     )
 
@@ -451,6 +484,7 @@ def evaluate_image(
         "evaluation_profile": evaluation_profile,
         "clip_enabled": use_clip,
         "clip_error": clip_error,
+        **face_data,
     }
 
 
