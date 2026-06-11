@@ -51,12 +51,13 @@ PROJECT_PRESETS = {
         "project_name": "GlucoPilot-RL",
         "category": "AI Healthcare",
         "output_type": "Portfolio Project Cover",
-        "style": "Medical Tech",
+        "style": "Premium Minimal",
         "color_palette": "deep navy, cyan, white, soft blue glow",
         "idea": (
-            "A futuristic AI healthcare control scene with a glowing glucose curve in the center, "
-            "floating medical data rings, subtle reinforcement learning decision paths, clean clinical lighting, "
-            "premium technology atmosphere, no human body, no phone, no interface text."
+            "A clean symbolic portfolio cover for an AI healthcare control system, "
+            "with a single glowing circular glucose ring in the center, subtle waveform energy, "
+            "small neural particles, soft cyan and blue futuristic light, minimal premium composition, "
+            "strong focal point, no letters, no logo, no text, no human, no interface."
         ),
     },
     "ChessRL-Agent": {
@@ -66,8 +67,8 @@ PROJECT_PRESETS = {
         "style": "Cinematic AI",
         "color_palette": "black, white, silver, electric blue",
         "idea": (
-            "A cinematic chess AI scene with a glowing chessboard, a central king piece in focus, "
-            "neural decision paths above the board, strategic energy lines, dramatic futuristic lighting."
+            "A cinematic chess AI cover with a central glowing king piece, a dark chessboard, "
+            "subtle neural decision paths, blue futuristic lighting, strong focal point, premium dramatic composition."
         ),
     },
     "Habit Tracker": {
@@ -77,8 +78,8 @@ PROJECT_PRESETS = {
         "style": "Mobile App Icon",
         "color_palette": "violet, indigo, soft white",
         "idea": (
-            "A minimal symbolic habit tracking icon with a circular progress ring, a check mark, "
-            "a clean daily goal symbol, rounded modern shape, premium mobile app icon style."
+            "A clean minimal app icon with a circular progress ring, a check mark, "
+            "a daily goal symbol, rounded modern shape, polished mobile app icon style."
         ),
     },
     "MarketBoard": {
@@ -88,8 +89,8 @@ PROJECT_PRESETS = {
         "style": "Clean Dashboard",
         "color_palette": "dark navy, cyan, white",
         "idea": (
-            "A modern digital marketplace concept with floating product cards, analytic shapes, "
-            "commerce symbols, clean geometric composition, strong focal point, no readable screen text."
+            "A modern marketplace concept cover with floating product shapes, clean commerce symbols, "
+            "abstract analytics elements, geometric composition, strong focal point, no readable text."
         ),
     },
     "VisionForge-AI": {
@@ -99,8 +100,8 @@ PROJECT_PRESETS = {
         "style": "Premium Minimal",
         "color_palette": "black, white, graphite, soft blue",
         "idea": (
-            "A premium AI image generation concept with diffusion particles, a glowing lens-like focal object, "
-            "creative neural energy, elegant dark background, polished technology presentation."
+            "A premium AI image generation concept with a central glowing lens-like object, "
+            "diffusion particles, elegant neural energy, dark polished background, clean futuristic composition."
         ),
     },
     "Custom": {
@@ -110,8 +111,8 @@ PROJECT_PRESETS = {
         "style": "Premium Minimal",
         "color_palette": "black, white, graphite, soft blue",
         "idea": (
-            "A professional AI project cover with a strong central focal point, clean futuristic composition, "
-            "subtle neural patterns, premium visual quality."
+            "A professional symbolic AI project cover with one strong central focal object, "
+            "clean futuristic design, subtle neural patterns, premium visual quality."
         ),
     },
 }

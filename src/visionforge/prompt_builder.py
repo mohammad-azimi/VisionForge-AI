@@ -1,19 +1,19 @@
 STYLE_PRESETS = {
     "Premium Minimal": (
         "premium minimal technology art, clean composition, elegant lighting, "
-        "soft gradients, modern editorial visual style"
+        "soft gradients, modern editorial visual style, symbolic cover design"
     ),
     "Cinematic AI": (
         "cinematic artificial intelligence concept art, dramatic lighting, "
-        "futuristic atmosphere, sharp details, strong depth"
+        "futuristic atmosphere, sharp details, strong depth, centered composition"
     ),
     "Medical Tech": (
-        "clean medical technology concept art, clinical blue glow, "
-        "trustworthy healthcare mood, futuristic precision"
+        "clean medical technology concept art, futuristic precision, soft blue glow, "
+        "symbolic healthcare visual, minimal composition"
     ),
     "Mobile App Icon": (
         "modern app icon design, centered symbol, rounded geometric forms, "
-        "clean vector-like appearance"
+        "clean vector-like appearance, simple recognizable silhouette"
     ),
     "GitHub Banner": (
         "wide developer project banner style, clean technical composition, "
@@ -29,7 +29,7 @@ STYLE_PRESETS = {
     ),
     "Clean Dashboard": (
         "clean abstract analytics visual, floating structured panels, "
-        "modern software aesthetic, subtle depth"
+        "modern software aesthetic, subtle depth, minimal clutter"
     ),
 }
 
@@ -37,11 +37,11 @@ STYLE_PRESETS = {
 CATEGORY_PRESETS = {
     "AI Healthcare": (
         "AI healthcare system, glucose monitoring, intelligent control, "
-        "medical analytics, patient safety"
+        "medical analytics, patient safety, symbolic representation"
     ),
     "Reinforcement Learning": (
         "reinforcement learning agent, reward-driven decision system, "
-        "intelligent control, optimization"
+        "intelligent control, optimization, decision paths"
     ),
     "Computer Vision": (
         "computer vision concept, neural image analysis, visual recognition, "
@@ -79,7 +79,7 @@ OUTPUT_PRESETS = {
 GLOBAL_QUALITY_SUFFIX = (
     "high quality, sharp details, strong focal point, centered composition, "
     "clean background, professional portfolio visual, visually clear subject, "
-    "modern technology art, no readable text"
+    "minimal clutter, symbolic design, modern technology art, no readable text"
 )
 
 
@@ -99,6 +99,8 @@ def build_prompt(
     if len(short_user_prompt) > 220:
         short_user_prompt = short_user_prompt[:220].rsplit(" ", 1)[0]
 
+    # Intentionally avoid injecting the project name into the prompt body.
+    # Diffusion models often try to render names as broken text.
     prompt_parts = [
         output_text,
         category_text,
@@ -118,10 +120,30 @@ def build_negative_prompt(custom_negative_prompt: str = "") -> str:
         "words",
         "numbers",
         "caption",
+        "title",
+        "labels",
+        "annotations",
         "watermark",
         "signature",
         "logo",
         "brand name",
+        "alphabet",
+        "face",
+        "human",
+        "person",
+        "hands",
+        "fingers",
+        "body",
+        "anatomy",
+        "organ",
+        "hospital room",
+        "clinic room",
+        "patient room",
+        "bed",
+        "chair",
+        "medical furniture",
+        "desk",
+        "device",
         "smartphone",
         "phone",
         "tablet",
@@ -135,20 +157,21 @@ def build_negative_prompt(custom_negative_prompt: str = "") -> str:
         "menu",
         "button",
         "fake app screen",
-        "distorted text",
-        "random letters",
-        "unreadable text",
-        "abstract stripes",
+        "infographic",
+        "diagram",
+        "chart",
+        "poster",
         "repetitive lines",
+        "abstract stripes",
         "grid pattern",
-        "overly abstract",
+        "messy composition",
+        "surreal biology",
+        "deformed object",
         "low quality",
         "blurry",
         "pixelated",
-        "messy composition",
-        "bad anatomy",
-        "ugly",
         "noise",
+        "ugly",
     ]
 
     if custom_negative_prompt.strip():
