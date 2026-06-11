@@ -6,6 +6,7 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
+from src.visionforge.evaluator import DEFAULT_CLIP_MODEL_ID
 from src.visionforge.presets import MODEL_PRESETS, PROJECT_PRESETS, SIZE_PRESETS
 from src.visionforge.prompt_builder import build_prompt_bundle
 from src.visionforge.self_refiner import RefinementConfig, run_self_refinement
@@ -23,6 +24,14 @@ st.set_page_config(
 )
 
 
+EVALUATION_PROFILE_LABELS = {
+    "Portfolio Cover": "portfolio",
+    "General Image": "general",
+    "Portrait / Face": "portrait",
+    "Reference Match": "reference_match",
+}
+
+
 def save_uploaded_image(uploaded_file, prefix: str) -> str | None:
     if uploaded_file is None:
         return None
@@ -38,13 +47,16 @@ def display_iteration_history(history: list[dict]) -> None:
     st.subheader("Refinement History")
 
     table_rows = []
+
     for item in history:
         table_rows.append(
             {
                 "iteration": item["iteration"],
                 "best_score": item["best_score"],
                 "visual_quality": item["visual_quality_score"],
-                "reference_similarity": item["reference_similarity"],
+                "prompt_alignment": item.get("prompt_alignment_score"),
+                "reference_similarity": item.get("reference_similarity"),
+                "clip_reference_similarity": item.get("clip_reference_similarity"),
                 "best_image": item["best_image_path"],
             }
         )
@@ -53,16 +65,26 @@ def display_iteration_history(history: list[dict]) -> None:
 
     for item in history:
         with st.expander(f"Iteration {item['iteration']} — Best score: {item['best_score']}"):
-            cols = st.columns(min(3, len(item["candidates"])))
+            candidates = item["candidates"]
+            cols = st.columns(min(3, len(candidates)))
 
-            for index, candidate in enumerate(item["candidates"]):
+            for index, candidate in enumerate(candidates):
                 with cols[index % len(cols)]:
                     st.image(candidate["image_path"], use_container_width=True)
-                    st.caption(f"Score: {candidate['final_score']}")
-                    st.caption(f"Quality: {candidate['visual_quality_score']}")
+                    st.caption(f"Final score: {candidate['final_score']}")
+                    st.caption(f"Visual quality: {candidate['visual_quality_score']}")
+
+                    if candidate.get("prompt_alignment_score") is not None:
+                        st.caption(f"Prompt alignment: {candidate['prompt_alignment_score']}")
 
                     if candidate.get("reference_similarity") is not None:
                         st.caption(f"Reference similarity: {candidate['reference_similarity']}")
+
+                    if candidate.get("clip_reference_similarity") is not None:
+                        st.caption(f"CLIP reference: {candidate['clip_reference_similarity']}")
+
+                    if candidate.get("radial_artifact_penalty"):
+                        st.caption(f"Radial penalty: {candidate['radial_artifact_penalty']}")
 
 
 st.title("🧠 Self-Refining Generation")
@@ -82,7 +104,8 @@ mode = st.radio(
 )
 
 st.info(
-    "This is a heuristic evaluator. It is useful for ranking outputs, but it is not a perfect human-level judge yet."
+    "Evaluator v2 can use visual heuristics plus optional CLIP-based prompt and reference matching. "
+    "CLIP is slower on the first run because the model may need to be downloaded."
 )
 
 left_col, right_col = st.columns([1, 1])
@@ -242,6 +265,36 @@ with right_col:
         step=0.01,
     )
 
+    st.subheader("Evaluator v2 Settings")
+
+    default_profile_index = 3 if mode == "Match Reference Image" else 0
+
+    evaluation_profile_label = st.selectbox(
+        "Evaluation profile",
+        list(EVALUATION_PROFILE_LABELS.keys()),
+        index=default_profile_index,
+    )
+
+    evaluation_profile = EVALUATION_PROFILE_LABELS[evaluation_profile_label]
+
+    use_clip = st.checkbox(
+        "Use CLIP semantic evaluator",
+        value=False,
+        help="Adds prompt-image and image-image similarity scoring. First run may download the CLIP model.",
+    )
+
+    clip_model_id = st.text_input(
+        "CLIP model ID",
+        value=DEFAULT_CLIP_MODEL_ID,
+        disabled=not use_clip,
+    )
+
+    penalize_radial_artifacts = st.checkbox(
+        "Penalize eye/portal-like circular artifacts",
+        value=False,
+        help="Useful when the model gets stuck generating repeated rings or eye-like images.",
+    )
+
 st.divider()
 
 initial_image_path = None
@@ -272,7 +325,8 @@ elif mode == "Match Reference Image":
 
     st.warning(
         "Reference matching tries to create a visually similar result. "
-        "For photos of real people, use images you own or have permission to use."
+        "For real people, use images you own or have permission to use. "
+        "This version measures visual similarity, not guaranteed identity-level face matching."
     )
 
 run_button = st.button("Start Self-Refining Generation", type="primary")
@@ -305,6 +359,10 @@ if run_button:
         min_strength=float(min_strength),
         initial_image_path=initial_image_path,
         reference_image_path=reference_image_path,
+        evaluation_profile=evaluation_profile,
+        use_clip=bool(use_clip),
+        clip_model_id=clip_model_id,
+        penalize_radial_artifacts=bool(penalize_radial_artifacts),
     )
 
     with st.spinner("Running self-refining generation..."):
@@ -320,6 +378,18 @@ if run_button:
         st.code(result["best_image_path"])
 
     display_iteration_history(result["history"])
+
+    clip_errors = []
+
+    for item in result["history"]:
+        for candidate in item["candidates"]:
+            if candidate.get("clip_error"):
+                clip_errors.append(candidate["clip_error"])
+
+    if clip_errors:
+        with st.expander("CLIP evaluator warnings"):
+            for error in sorted(set(clip_errors)):
+                st.warning(error)
 
     with st.expander("Raw result data"):
         st.json(json.loads(json.dumps(result, default=str)))

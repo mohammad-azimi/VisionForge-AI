@@ -8,7 +8,7 @@ from typing import Any
 
 from PIL import Image
 
-from .evaluator import attach_scores_to_metadata, rank_images
+from .evaluator import DEFAULT_CLIP_MODEL_ID, attach_scores_to_metadata, rank_images
 from .generator import (
     GenerationConfig,
     generate_image,
@@ -37,6 +37,10 @@ class RefinementConfig:
     min_strength: float = 0.20
     initial_image_path: str | None = None
     reference_image_path: str | None = None
+    evaluation_profile: str = "portfolio"
+    use_clip: bool = False
+    clip_model_id: str = DEFAULT_CLIP_MODEL_ID
+    penalize_radial_artifacts: bool = False
 
 
 def build_generation_config(config: RefinementConfig, seed: int, mode: str) -> GenerationConfig:
@@ -69,17 +73,6 @@ def is_image_file_path(value: Any) -> bool:
 
 
 def extract_image_path(output: Any) -> str:
-    """
-    Supports several generator return formats:
-    - {"image_path": "..."}
-    - {"path": "..."}
-    - ".../image.png"
-    - Path(".../image.png")
-    - (".../image.png", metadata)
-    - (PIL.Image, ".../image.png")
-    - nested list/tuple/dict containing an image path
-    """
-
     if isinstance(output, dict):
         preferred_keys = [
             "image_path",
@@ -159,7 +152,6 @@ def call_text_to_image_generator(
     try:
         return generate_image(**kwargs)
     except TypeError:
-        # Fallback for older positional signatures.
         try:
             return generate_image(prompt, negative_prompt, generation_config)
         except TypeError as exc:
@@ -205,7 +197,6 @@ def call_image_to_image_generator(
     try:
         return generate_image_from_image(**kwargs)
     except TypeError:
-        # Fallbacks for different positional versions.
         fallback_calls = [
             lambda: generate_image_from_image(image_path, prompt, negative_prompt, generation_config, strength),
             lambda: generate_image_from_image(prompt, negative_prompt, generation_config, image_path, strength),
@@ -293,6 +284,11 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
         ranked_candidates = rank_images(
             image_paths=candidate_paths,
             reference_image_path=config.reference_image_path,
+            prompt=config.prompt,
+            evaluation_profile=config.evaluation_profile,
+            use_clip=config.use_clip,
+            clip_model_id=config.clip_model_id,
+            penalize_radial_artifacts=config.penalize_radial_artifacts,
         )
 
         for rank_index, candidate in enumerate(ranked_candidates, start=1):
@@ -305,6 +301,10 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
                 "strength": None
                 if parent_image_path is None
                 else strength_for_iteration(config, iteration_index),
+                "evaluation_profile": config.evaluation_profile,
+                "use_clip": config.use_clip,
+                "clip_model_id": config.clip_model_id,
+                "penalize_radial_artifacts": config.penalize_radial_artifacts,
             }
 
             attach_scores_to_metadata(
@@ -329,7 +329,9 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
                 "best_image_path": iteration_best["image_path"],
                 "best_score": iteration_best["final_score"],
                 "visual_quality_score": iteration_best["visual_quality_score"],
+                "prompt_alignment_score": iteration_best["prompt_alignment_score"],
                 "reference_similarity": iteration_best["reference_similarity"],
+                "clip_reference_similarity": iteration_best["clip_reference_similarity"],
                 "candidates": ranked_candidates,
             }
         )

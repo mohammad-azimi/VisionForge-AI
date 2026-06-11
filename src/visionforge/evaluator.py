@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from PIL import Image
+
+
+DEFAULT_CLIP_MODEL_ID = "openai/clip-vit-base-patch32"
 
 
 def load_rgb_image(image_path: str | Path) -> Image.Image:
@@ -33,8 +37,6 @@ def clamp_score(value: float) -> float:
 def compute_brightness_score(arr: np.ndarray) -> float:
     gray = arr.mean(axis=2)
     mean_brightness = float(gray.mean())
-
-    # Best range is neither too dark nor too bright.
     score = 100.0 - abs(mean_brightness - 0.50) * 220.0
     return clamp_score(score)
 
@@ -43,7 +45,6 @@ def compute_contrast_score(arr: np.ndarray) -> float:
     gray = arr.mean(axis=2)
     contrast = float(gray.std())
 
-    # Very low contrast is bad. Extremely high contrast can also mean harsh/noisy output.
     if contrast < 0.03:
         return clamp_score(contrast / 0.03 * 30.0)
 
@@ -58,7 +59,6 @@ def compute_color_score(arr: np.ndarray) -> float:
     min_channel = arr.min(axis=2)
     saturation = float((max_channel - min_channel).mean())
 
-    # A small-to-medium amount of color usually works well for clean portfolio visuals.
     if saturation < 0.04:
         return clamp_score(saturation / 0.04 * 45.0)
 
@@ -81,7 +81,6 @@ def compute_sharpness_score(arr: np.ndarray) -> float:
     if gradient <= 0.080:
         return clamp_score(45.0 + gradient / 0.080 * 55.0)
 
-    # Too much high-frequency detail may indicate noise, artifacts, or clutter.
     return clamp_score(100.0 - (gradient - 0.080) * 500.0)
 
 
@@ -122,7 +121,51 @@ def compute_clutter_penalty(arr: np.ndarray) -> float:
     return clamp_score((edge_density - 0.08) * 350.0)
 
 
-def compute_reference_similarity(
+def compute_radial_artifact_penalty(arr: np.ndarray) -> float:
+    """
+    Penalizes repeated circular / eye-like / portal-like patterns.
+
+    This is optional because some projects intentionally use circular symbols.
+    """
+    gray = arr.mean(axis=2)
+    height, width = gray.shape
+    center_y = height / 2.0
+    center_x = width / 2.0
+
+    y, x = np.indices(gray.shape)
+    radius = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+    radius = radius.astype(np.int32)
+
+    max_radius = int(min(width, height) * 0.48)
+    radial_profile = []
+
+    for r in range(2, max_radius):
+        mask = radius == r
+        if mask.any():
+            radial_profile.append(float(gray[mask].mean()))
+
+    if len(radial_profile) < 16:
+        return 0.0
+
+    profile = np.asarray(radial_profile, dtype=np.float32)
+    profile = profile - profile.mean()
+
+    radial_edges = np.abs(np.diff(profile))
+    strong_ring_ratio = float((radial_edges > 0.030).mean())
+    profile_variation = float(profile.std())
+
+    penalty = 0.0
+
+    if strong_ring_ratio > 0.12:
+        penalty += (strong_ring_ratio - 0.12) * 260.0
+
+    if profile_variation > 0.12:
+        penalty += (profile_variation - 0.12) * 220.0
+
+    return clamp_score(penalty)
+
+
+def compute_pixel_histogram_reference_similarity(
     image_path: str | Path,
     reference_image_path: str | Path | None,
 ) -> float | None:
@@ -138,8 +181,8 @@ def compute_reference_similarity(
     mean_absolute_error = float(np.abs(arr - ref).mean())
     pixel_similarity = 100.0 * (1.0 - mean_absolute_error)
 
-    # Color histogram similarity gives a softer similarity signal.
     hist_scores = []
+
     for channel in range(3):
         hist_a, _ = np.histogram(arr[:, :, channel], bins=32, range=(0.0, 1.0), density=True)
         hist_b, _ = np.histogram(ref[:, :, channel], bins=32, range=(0.0, 1.0), density=True)
@@ -151,13 +194,192 @@ def compute_reference_similarity(
         hist_scores.append(float(overlap * 100.0))
 
     histogram_similarity = float(np.mean(hist_scores))
+    return clamp_score(pixel_similarity * 0.55 + histogram_similarity * 0.45)
 
-    return clamp_score(pixel_similarity * 0.65 + histogram_similarity * 0.35)
+
+def get_torch_device() -> str:
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+
+    return "cpu"
+
+
+@lru_cache(maxsize=2)
+def load_clip_model(model_id: str = DEFAULT_CLIP_MODEL_ID):
+    import torch
+    from transformers import CLIPModel, CLIPProcessor
+
+    device = get_torch_device()
+    processor = CLIPProcessor.from_pretrained(model_id)
+    model = CLIPModel.from_pretrained(model_id)
+    model.to(device)
+    model.eval()
+
+    return model, processor, device, torch
+
+
+def normalized_clip_features_for_image(image: Image.Image, model_id: str = DEFAULT_CLIP_MODEL_ID):
+    model, processor, device, torch = load_clip_model(model_id)
+    inputs = processor(images=image, return_tensors="pt").to(device)
+
+    with torch.no_grad():
+        features = model.get_image_features(**inputs)
+
+    features = features / features.norm(dim=-1, keepdim=True)
+    return features
+
+
+def normalized_clip_features_for_text(text: str, model_id: str = DEFAULT_CLIP_MODEL_ID):
+    model, processor, device, torch = load_clip_model(model_id)
+    inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(device)
+
+    with torch.no_grad():
+        features = model.get_text_features(**inputs)
+
+    features = features / features.norm(dim=-1, keepdim=True)
+    return features
+
+
+def clip_cosine_to_score(cosine_value: float, mode: str) -> float:
+    """
+    Converts CLIP cosine similarity into a practical ranking score.
+    These scores are calibrated for ranking candidates, not absolute scientific measurement.
+    """
+    if mode == "text":
+        return clamp_score((cosine_value - 0.15) / 0.20 * 100.0)
+
+    if mode == "image":
+        return clamp_score((cosine_value - 0.55) / 0.35 * 100.0)
+
+    return clamp_score((cosine_value + 1.0) * 50.0)
+
+
+def compute_clip_prompt_alignment(
+    image_path: str | Path,
+    prompt: str | None,
+    clip_model_id: str = DEFAULT_CLIP_MODEL_ID,
+) -> float | None:
+    if not prompt:
+        return None
+
+    image = resize_for_eval(load_rgb_image(image_path), size=224)
+
+    image_features = normalized_clip_features_for_image(image, model_id=clip_model_id)
+    text_features = normalized_clip_features_for_text(prompt, model_id=clip_model_id)
+
+    cosine = float((image_features @ text_features.T).item())
+    return clip_cosine_to_score(cosine, mode="text")
+
+
+def compute_clip_reference_similarity(
+    image_path: str | Path,
+    reference_image_path: str | Path | None,
+    clip_model_id: str = DEFAULT_CLIP_MODEL_ID,
+) -> float | None:
+    if not reference_image_path:
+        return None
+
+    image = resize_for_eval(load_rgb_image(image_path), size=224)
+    reference = resize_for_eval(load_rgb_image(reference_image_path), size=224)
+
+    image_features = normalized_clip_features_for_image(image, model_id=clip_model_id)
+    reference_features = normalized_clip_features_for_image(reference, model_id=clip_model_id)
+
+    cosine = float((image_features @ reference_features.T).item())
+    return clip_cosine_to_score(cosine, mode="image")
+
+
+def combine_scores(
+    visual_quality_score: float,
+    prompt_alignment_score: float | None,
+    reference_similarity: float | None,
+    clip_reference_similarity: float | None,
+    evaluation_profile: str,
+) -> float:
+    profile = evaluation_profile.lower().strip()
+
+    prompt_score = prompt_alignment_score
+    ref_score = reference_similarity
+
+    if clip_reference_similarity is not None and reference_similarity is not None:
+        ref_score = reference_similarity * 0.35 + clip_reference_similarity * 0.65
+    elif clip_reference_similarity is not None:
+        ref_score = clip_reference_similarity
+
+    if profile == "reference_match":
+        score = visual_quality_score * 0.25
+
+        if ref_score is not None:
+            score += ref_score * 0.60
+        else:
+            score += visual_quality_score * 0.35
+
+        if prompt_score is not None:
+            score += prompt_score * 0.15
+        else:
+            score += visual_quality_score * 0.15
+
+        return clamp_score(score)
+
+    if profile == "portrait":
+        score = visual_quality_score * 0.40
+
+        if prompt_score is not None:
+            score += prompt_score * 0.35
+        else:
+            score += visual_quality_score * 0.20
+
+        if ref_score is not None:
+            score += ref_score * 0.25
+        else:
+            score += visual_quality_score * 0.25
+
+        return clamp_score(score)
+
+    if profile == "general":
+        score = visual_quality_score * 0.55
+
+        if prompt_score is not None:
+            score += prompt_score * 0.35
+        else:
+            score += visual_quality_score * 0.25
+
+        if ref_score is not None:
+            score += ref_score * 0.10
+        else:
+            score += visual_quality_score * 0.10
+
+        return clamp_score(score)
+
+    # Default: portfolio cover
+    score = visual_quality_score * 0.65
+
+    if prompt_score is not None:
+        score += prompt_score * 0.25
+    else:
+        score += visual_quality_score * 0.20
+
+    if ref_score is not None:
+        score += ref_score * 0.10
+    else:
+        score += visual_quality_score * 0.10
+
+    return clamp_score(score)
 
 
 def evaluate_image(
     image_path: str | Path,
     reference_image_path: str | Path | None = None,
+    prompt: str | None = None,
+    evaluation_profile: str = "portfolio",
+    use_clip: bool = False,
+    clip_model_id: str = DEFAULT_CLIP_MODEL_ID,
+    penalize_radial_artifacts: bool = False,
 ) -> dict[str, Any]:
     image = resize_for_eval(load_rgb_image(image_path), size=256)
     arr = image_to_array(image)
@@ -168,21 +390,50 @@ def evaluate_image(
     sharpness_score = compute_sharpness_score(arr)
     center_focus_score = compute_center_focus_score(arr)
     clutter_penalty = compute_clutter_penalty(arr)
-    reference_similarity = compute_reference_similarity(image_path, reference_image_path)
+    radial_artifact_penalty = compute_radial_artifact_penalty(arr) if penalize_radial_artifacts else 0.0
+
+    reference_similarity = compute_pixel_histogram_reference_similarity(
+        image_path=image_path,
+        reference_image_path=reference_image_path,
+    )
 
     visual_quality_score = clamp_score(
         brightness_score * 0.18
-        + contrast_score * 0.22
-        + color_score * 0.16
-        + sharpness_score * 0.22
-        + center_focus_score * 0.22
+        + contrast_score * 0.20
+        + color_score * 0.14
+        + sharpness_score * 0.20
+        + center_focus_score * 0.28
         - clutter_penalty * 0.35
+        - radial_artifact_penalty * 0.45
     )
 
-    if reference_similarity is None:
-        final_score = visual_quality_score
-    else:
-        final_score = clamp_score(visual_quality_score * 0.45 + reference_similarity * 0.55)
+    prompt_alignment_score = None
+    clip_reference_similarity = None
+    clip_error = None
+
+    if use_clip:
+        try:
+            prompt_alignment_score = compute_clip_prompt_alignment(
+                image_path=image_path,
+                prompt=prompt,
+                clip_model_id=clip_model_id,
+            )
+
+            clip_reference_similarity = compute_clip_reference_similarity(
+                image_path=image_path,
+                reference_image_path=reference_image_path,
+                clip_model_id=clip_model_id,
+            )
+        except Exception as exc:
+            clip_error = str(exc)
+
+    final_score = combine_scores(
+        visual_quality_score=visual_quality_score,
+        prompt_alignment_score=prompt_alignment_score,
+        reference_similarity=reference_similarity,
+        clip_reference_similarity=clip_reference_similarity,
+        evaluation_profile=evaluation_profile,
+    )
 
     return {
         "final_score": round(final_score, 2),
@@ -193,13 +444,24 @@ def evaluate_image(
         "sharpness_score": round(sharpness_score, 2),
         "center_focus_score": round(center_focus_score, 2),
         "clutter_penalty": round(clutter_penalty, 2),
+        "radial_artifact_penalty": round(radial_artifact_penalty, 2),
         "reference_similarity": None if reference_similarity is None else round(reference_similarity, 2),
+        "prompt_alignment_score": None if prompt_alignment_score is None else round(prompt_alignment_score, 2),
+        "clip_reference_similarity": None if clip_reference_similarity is None else round(clip_reference_similarity, 2),
+        "evaluation_profile": evaluation_profile,
+        "clip_enabled": use_clip,
+        "clip_error": clip_error,
     }
 
 
 def rank_images(
     image_paths: list[str | Path],
     reference_image_path: str | Path | None = None,
+    prompt: str | None = None,
+    evaluation_profile: str = "portfolio",
+    use_clip: bool = False,
+    clip_model_id: str = DEFAULT_CLIP_MODEL_ID,
+    penalize_radial_artifacts: bool = False,
 ) -> list[dict[str, Any]]:
     ranked = []
 
@@ -207,6 +469,11 @@ def rank_images(
         score_data = evaluate_image(
             image_path=image_path,
             reference_image_path=reference_image_path,
+            prompt=prompt,
+            evaluation_profile=evaluation_profile,
+            use_clip=use_clip,
+            clip_model_id=clip_model_id,
+            penalize_radial_artifacts=penalize_radial_artifacts,
         )
         ranked.append(
             {
