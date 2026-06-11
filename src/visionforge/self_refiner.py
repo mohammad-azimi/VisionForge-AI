@@ -16,6 +16,13 @@ from .generator import (
 )
 
 
+RADIAL_ESCAPE_NEGATIVE_PROMPT = (
+    "eye, iris, pupil, eyeball, portal, vortex, tunnel, target symbol, "
+    "concentric circles, repeated rings, circular artifact, ring pattern, "
+    "hypnotic circle, abstract circular texture"
+)
+
+
 @dataclass
 class RefinementConfig:
     prompt: str
@@ -42,6 +49,13 @@ class RefinementConfig:
     clip_model_id: str = DEFAULT_CLIP_MODEL_ID
     penalize_radial_artifacts: bool = False
 
+    # Exploration settings.
+    # These are enabled by default to prevent the loop from getting stuck
+    # refining the same bad visual pattern.
+    exploration_candidates_per_iteration: int = 1
+    artifact_escape_threshold: float = 18.0
+    restart_when_all_candidates_have_artifacts: bool = True
+
 
 def build_generation_config(config: RefinementConfig, seed: int, mode: str) -> GenerationConfig:
     return GenerationConfig(
@@ -62,6 +76,16 @@ def build_generation_config(config: RefinementConfig, seed: int, mode: str) -> G
 def strength_for_iteration(config: RefinementConfig, iteration_index: int) -> float:
     strength = config.strength_start - (iteration_index * config.strength_decay)
     return max(config.min_strength, strength)
+
+
+def effective_negative_prompt(config: RefinementConfig) -> str:
+    if not config.penalize_radial_artifacts:
+        return config.negative_prompt
+
+    if RADIAL_ESCAPE_NEGATIVE_PROMPT.lower() in config.negative_prompt.lower():
+        return config.negative_prompt
+
+    return f"{config.negative_prompt}, {RADIAL_ESCAPE_NEGATIVE_PROMPT}"
 
 
 def is_image_file_path(value: Any) -> bool:
@@ -221,6 +245,25 @@ def call_image_to_image_generator(
         ) from last_error
 
 
+def should_make_fresh_candidate(
+    config: RefinementConfig,
+    iteration_index: int,
+    candidate_index: int,
+    parent_image_path: str | None,
+) -> bool:
+    if parent_image_path is None:
+        return True
+
+    if config.reference_image_path:
+        return False
+
+    if iteration_index == 0:
+        return False
+
+    exploration_count = max(0, config.exploration_candidates_per_iteration)
+    return candidate_index >= max(1, config.candidates_per_iteration - exploration_count)
+
+
 def generate_candidates_for_iteration(
     config: RefinementConfig,
     iteration_index: int,
@@ -228,11 +271,19 @@ def generate_candidates_for_iteration(
 ) -> list[str]:
     generated_paths = []
     candidate_count = max(1, config.candidates_per_iteration)
+    negative_prompt = effective_negative_prompt(config)
 
     for candidate_index in range(candidate_count):
         seed = config.seed + iteration_index * 1000 + candidate_index
 
-        if parent_image_path:
+        make_fresh_candidate = should_make_fresh_candidate(
+            config=config,
+            iteration_index=iteration_index,
+            candidate_index=candidate_index,
+            parent_image_path=parent_image_path,
+        )
+
+        if parent_image_path and not make_fresh_candidate:
             generation_config = build_generation_config(
                 config=config,
                 seed=seed,
@@ -242,7 +293,7 @@ def generate_candidates_for_iteration(
             output = call_image_to_image_generator(
                 image_path=parent_image_path,
                 prompt=config.prompt,
-                negative_prompt=config.negative_prompt,
+                negative_prompt=negative_prompt,
                 generation_config=generation_config,
                 strength=strength_for_iteration(config, iteration_index),
             )
@@ -250,12 +301,12 @@ def generate_candidates_for_iteration(
             generation_config = build_generation_config(
                 config=config,
                 seed=seed,
-                mode="self-refine-text-to-image",
+                mode="self-refine-text-to-image-exploration",
             )
 
             output = call_text_to_image_generator(
                 prompt=config.prompt,
-                negative_prompt=config.negative_prompt,
+                negative_prompt=negative_prompt,
                 generation_config=generation_config,
             )
 
@@ -263,6 +314,31 @@ def generate_candidates_for_iteration(
         generated_paths.append(image_path)
 
     return generated_paths
+
+
+def select_next_parent(
+    ranked_candidates: list[dict[str, Any]],
+    config: RefinementConfig,
+) -> tuple[dict[str, Any], str | None, str]:
+    best_candidate = ranked_candidates[0]
+
+    if not config.penalize_radial_artifacts:
+        return best_candidate, best_candidate["image_path"], "best_score"
+
+    clean_candidates = [
+        candidate
+        for candidate in ranked_candidates
+        if float(candidate.get("radial_artifact_penalty") or 0.0) < config.artifact_escape_threshold
+    ]
+
+    if clean_candidates:
+        selected = clean_candidates[0]
+        return selected, selected["image_path"], "best_clean_candidate"
+
+    if config.restart_when_all_candidates_have_artifacts:
+        return best_candidate, None, "restart_due_to_radial_artifacts"
+
+    return best_candidate, best_candidate["image_path"], "best_score_with_artifact_warning"
 
 
 def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
@@ -291,12 +367,19 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
             penalize_radial_artifacts=config.penalize_radial_artifacts,
         )
 
+        selected_candidate, next_parent_image_path, selection_reason = select_next_parent(
+            ranked_candidates=ranked_candidates,
+            config=config,
+        )
+
         for rank_index, candidate in enumerate(ranked_candidates, start=1):
             refinement_metadata = {
                 "session_id": session_id,
                 "iteration": iteration_index + 1,
                 "rank_in_iteration": rank_index,
                 "parent_image_path": parent_image_path,
+                "next_parent_image_path": next_parent_image_path,
+                "selection_reason": selection_reason,
                 "reference_image_path": config.reference_image_path,
                 "strength": None
                 if parent_image_path is None
@@ -305,6 +388,8 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
                 "use_clip": config.use_clip,
                 "clip_model_id": config.clip_model_id,
                 "penalize_radial_artifacts": config.penalize_radial_artifacts,
+                "exploration_candidates_per_iteration": config.exploration_candidates_per_iteration,
+                "artifact_escape_threshold": config.artifact_escape_threshold,
             }
 
             attach_scores_to_metadata(
@@ -317,21 +402,22 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
                 extra_metadata=refinement_metadata,
             )
 
-        iteration_best = ranked_candidates[0]
-        parent_image_path = iteration_best["image_path"]
+        parent_image_path = next_parent_image_path
 
-        if best_overall is None or iteration_best["final_score"] > best_overall["final_score"]:
-            best_overall = iteration_best
+        if best_overall is None or selected_candidate["final_score"] > best_overall["final_score"]:
+            best_overall = selected_candidate
 
         history.append(
             {
                 "iteration": iteration_index + 1,
-                "best_image_path": iteration_best["image_path"],
-                "best_score": iteration_best["final_score"],
-                "visual_quality_score": iteration_best["visual_quality_score"],
-                "prompt_alignment_score": iteration_best["prompt_alignment_score"],
-                "reference_similarity": iteration_best["reference_similarity"],
-                "clip_reference_similarity": iteration_best["clip_reference_similarity"],
+                "best_image_path": selected_candidate["image_path"],
+                "best_score": selected_candidate["final_score"],
+                "visual_quality_score": selected_candidate["visual_quality_score"],
+                "prompt_alignment_score": selected_candidate["prompt_alignment_score"],
+                "reference_similarity": selected_candidate["reference_similarity"],
+                "clip_reference_similarity": selected_candidate["clip_reference_similarity"],
+                "selection_reason": selection_reason,
+                "next_parent_image_path": next_parent_image_path,
                 "candidates": ranked_candidates,
             }
         )
