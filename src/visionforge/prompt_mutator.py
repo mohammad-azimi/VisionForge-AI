@@ -22,17 +22,28 @@ def normalize_text(text: str) -> str:
 
 
 def merge_negative_prompts(base_negative_prompt: str, extra_negative_prompt: str) -> str:
-    items = []
+    seen_lower: set[str] = set()
+    merged: list[str] = []
 
     for part in f"{base_negative_prompt}, {extra_negative_prompt}".split(","):
         cleaned = part.strip()
-        if cleaned and cleaned.lower() not in {item.lower() for item in items}:
-            items.append(cleaned)
+        if not cleaned:
+            continue
 
-    return ", ".join(items)
+        lowered = cleaned.lower()
+        if lowered in seen_lower:
+            continue
+
+        seen_lower.add(lowered)
+        merged.append(cleaned)
+
+    return ", ".join(merged)
 
 
-def suffixes_for_profile(evaluation_profile: str) -> list[tuple[str, str, str]]:
+def suffixes_for_profile(
+    evaluation_profile: str,
+    portrait_reference_mode: bool = False,
+) -> list[tuple[str, str, str]]:
     profile = (evaluation_profile or "portfolio").strip().lower()
 
     if profile == "portrait":
@@ -40,30 +51,74 @@ def suffixes_for_profile(evaluation_profile: str) -> list[tuple[str, str, str]]:
             (
                 "portrait-clean",
                 (
-                    "Emphasize a clean high-quality human portrait with natural facial structure, "
-                    "clear eyes, realistic skin detail, balanced lighting, and strong facial coherence."
+                    "Emphasize a clean realistic human portrait with natural facial proportions, "
+                    "clear eyes, coherent face structure, realistic skin detail, and balanced lighting."
                 ),
-                "distorted face, extra eyes, deformed mouth, bad anatomy, duplicated facial features",
+                "distorted face, extra eyes, deformed mouth, asymmetrical facial features, duplicated face",
             ),
             (
-                "portrait-cinematic",
+                "portrait-studio",
                 (
-                    "Emphasize a cinematic portrait with clean depth, realistic expression, "
-                    "professional composition, and subtle background separation."
+                    "Emphasize a refined studio-quality portrait with natural expression, "
+                    "professional lighting, clean background separation, and realistic anatomy."
                 ),
-                "extra face, double face, surreal anatomy, malformed eyes, malformed nose",
+                "surreal face, malformed nose, bad anatomy, extra limbs, duplicate face",
             ),
             (
                 "portrait-minimal",
                 (
-                    "Emphasize a premium minimal portrait with a clear main subject, "
-                    "simple background, polished lighting, and realistic proportions."
+                    "Emphasize a premium minimal portrait with a clear single subject, "
+                    "simple background, polished lighting, and believable facial identity."
                 ),
-                "crowded scene, busy background, surreal body, extra limbs",
+                "crowded background, multiple people, distorted facial geometry",
+            ),
+            (
+                "portrait-closeup",
+                (
+                    "Emphasize a close-up portrait with stable identity, detailed eyes, "
+                    "clean mouth shape, and realistic skin texture."
+                ),
+                "face artifacts, blurry face, extra facial elements, duplicated eyes",
             ),
         ]
 
     if profile == "reference_match":
+        if portrait_reference_mode:
+            return [
+                (
+                    "reference-portrait-identity",
+                    (
+                        "Emphasize faithful preservation of the reference person's face shape, "
+                        "identity cues, hairstyle, gaze direction, and overall portrait likeness."
+                    ),
+                    "different person, face distortion, extra face, duplicated eyes, altered hairstyle",
+                ),
+                (
+                    "reference-portrait-lighting",
+                    (
+                        "Emphasize preservation of the reference portrait lighting, camera angle, "
+                        "framing, expression, and natural skin rendering."
+                    ),
+                    "wrong lighting, wrong expression, different angle, surreal face",
+                ),
+                (
+                    "reference-portrait-clean",
+                    (
+                        "Emphasize a clean high-fidelity portrait reconstruction with strong likeness, "
+                        "reduced artifacts, and stable facial structure."
+                    ),
+                    "messy reconstruction, noisy face, malformed eyes, malformed mouth",
+                ),
+                (
+                    "reference-portrait-background",
+                    (
+                        "Emphasize preservation of the reference image mood and background feel "
+                        "while keeping the portrait identity coherent and realistic."
+                    ),
+                    "unrelated background, multiple heads, background clutter",
+                ),
+            ]
+
         return [
             (
                 "reference-structure",
@@ -71,7 +126,7 @@ def suffixes_for_profile(evaluation_profile: str) -> list[tuple[str, str, str]]:
                     "Emphasize preservation of the reference image structure, composition, "
                     "main subject silhouette, and overall scene layout."
                 ),
-                "major composition change, different framing, unrelated subject",
+                "major composition change, unrelated subject, extreme framing change",
             ),
             (
                 "reference-colors",
@@ -79,7 +134,7 @@ def suffixes_for_profile(evaluation_profile: str) -> list[tuple[str, str, str]]:
                     "Emphasize preservation of the reference image color mood, "
                     "lighting atmosphere, and visual identity."
                 ),
-                "different color palette, wrong lighting, unrelated aesthetic",
+                "different palette, wrong lighting, unrelated aesthetic",
             ),
             (
                 "reference-clean",
@@ -87,11 +142,18 @@ def suffixes_for_profile(evaluation_profile: str) -> list[tuple[str, str, str]]:
                     "Emphasize a clean faithful reconstruction of the reference image "
                     "with strong visual similarity and reduced artifacts."
                 ),
-                "messy reconstruction, noisy image, deformed shapes",
+                "messy reconstruction, noisy image, deformed shapes, broken structure",
+            ),
+            (
+                "reference-detail",
+                (
+                    "Emphasize preservation of the reference image detail hierarchy, "
+                    "surface texture, and visual coherence."
+                ),
+                "loss of detail, over-smoothing, incorrect structure",
             ),
         ]
 
-    # default: portfolio / general
     return [
         (
             "network-control",
@@ -143,6 +205,7 @@ def build_prompt_variants(
     num_variants: int = 4,
     avoid_radial_artifacts: bool = False,
     include_base: bool = True,
+    portrait_reference_mode: bool = False,
 ) -> list[PromptVariant]:
     base_prompt = normalize_text(prompt)
     base_negative_prompt = normalize_text(negative_prompt)
@@ -161,7 +224,10 @@ def build_prompt_variants(
             )
         )
 
-    for label, suffix, extra_negative in suffixes_for_profile(evaluation_profile):
+    for label, suffix, extra_negative in suffixes_for_profile(
+        evaluation_profile=evaluation_profile,
+        portrait_reference_mode=portrait_reference_mode,
+    ):
         mutated_prompt = normalize_text(f"{base_prompt} {suffix}")
         mutated_negative_prompt = merge_negative_prompts(base_negative_prompt, extra_negative)
 

@@ -59,6 +59,7 @@ def display_iteration_history(history: list[dict]) -> None:
                 "clip_reference_similarity": item.get("clip_reference_similarity"),
                 "selected_prompt_label": item.get("selected_prompt_label"),
                 "selected_generation_kind": item.get("selected_generation_kind"),
+                "selected_parent_source": item.get("selected_parent_source"),
                 "selection_reason": item.get("selection_reason"),
                 "best_image": item["best_image_path"],
             }
@@ -71,6 +72,7 @@ def display_iteration_history(history: list[dict]) -> None:
             st.write(f"**Selection reason:** {item.get('selection_reason')}")
             st.write(f"**Selected prompt label:** {item.get('selected_prompt_label')}")
             st.write(f"**Selected generation kind:** {item.get('selected_generation_kind')}")
+            st.write(f"**Selected parent source:** {item.get('selected_parent_source')}")
 
             candidates = item["candidates"]
             cols = st.columns(min(3, len(candidates)))
@@ -82,6 +84,7 @@ def display_iteration_history(history: list[dict]) -> None:
                     st.caption(f"Visual quality: {candidate['visual_quality_score']}")
                     st.caption(f"Prompt label: {candidate.get('prompt_label')}")
                     st.caption(f"Generation kind: {candidate.get('generation_kind')}")
+                    st.caption(f"Parent source: {candidate.get('parent_source')}")
 
                     if candidate.get("prompt_alignment_score") is not None:
                         st.caption(f"Prompt alignment: {candidate['prompt_alignment_score']}")
@@ -104,8 +107,8 @@ def display_iteration_history(history: list[dict]) -> None:
 
 st.title("🧠 Self-Refining Generation")
 st.write(
-    "Generate an image, score it automatically, reuse the best result as the next input, "
-    "and iteratively improve the output."
+    "Generate, score, compare, and refine images iteratively. "
+    "This version includes reference-anchor refinement and portrait-aware reference matching."
 )
 
 mode = st.radio(
@@ -119,8 +122,8 @@ mode = st.radio(
 )
 
 st.info(
-    "This page now supports prompt mutation, exploration candidates, optional CLIP-based evaluation, "
-    "and radial-artifact escape logic."
+    "Reference Match V2 keeps the original reference image as an optional anchor in every iteration, "
+    "which helps the loop stay closer to the target image."
 )
 
 left_col, right_col = st.columns([1, 1])
@@ -245,8 +248,8 @@ with right_col:
     candidates_per_iteration = st.slider(
         "Candidates per iteration",
         min_value=1,
-        max_value=5,
-        value=3,
+        max_value=6,
+        value=4,
     )
 
     num_inference_steps = st.slider(
@@ -294,7 +297,7 @@ with right_col:
 
     use_clip = st.checkbox(
         "Use CLIP semantic evaluator",
-        value=False,
+        value=(mode == "Match Reference Image"),
         help="Adds prompt-image and image-image similarity scoring. First run may download the CLIP model.",
     )
 
@@ -327,7 +330,6 @@ with right_col:
     enable_prompt_mutation = st.checkbox(
         "Enable prompt mutation",
         value=True,
-        help="Create several prompt variants so the loop does not get stuck in one visual pattern.",
     )
 
     exploration_candidates_per_iteration = st.slider(
@@ -335,13 +337,19 @@ with right_col:
         min_value=0,
         max_value=3,
         value=1,
-        help="How many candidates per iteration should be generated fresh from text instead of only refining the previous image.",
+        help="How many candidates should be generated freshly from text in each iteration.",
     )
 
 st.divider()
 
 initial_image_path = None
 reference_image_path = None
+portrait_reference_mode = False
+keep_reference_anchor = False
+reference_anchor_candidates_per_iteration = 0
+reference_strength_start = 0.26
+reference_strength_decay = 0.04
+reference_min_strength = 0.12
 
 if mode == "Improve from Image":
     uploaded_initial = st.file_uploader(
@@ -355,6 +363,8 @@ if mode == "Improve from Image":
         st.image(initial_image_path, caption="Initial image", width=320)
 
 elif mode == "Match Reference Image":
+    st.subheader("Reference Match V2 Settings")
+
     uploaded_reference = st.file_uploader(
         "Upload a reference image to match",
         type=["png", "jpg", "jpeg", "webp"],
@@ -366,10 +376,51 @@ elif mode == "Match Reference Image":
     if reference_image_path:
         st.image(reference_image_path, caption="Reference image", width=320)
 
+    portrait_reference_mode = st.checkbox(
+        "Portrait / face reference mode",
+        value=True,
+        help="Use this when the reference image is mainly a person's face or portrait.",
+    )
+
+    keep_reference_anchor = st.checkbox(
+        "Keep the original reference as an anchor every iteration",
+        value=True,
+    )
+
+    reference_anchor_candidates_per_iteration = st.slider(
+        "Reference-anchor candidates per iteration",
+        min_value=0,
+        max_value=3,
+        value=1,
+    )
+
+    reference_strength_start = st.slider(
+        "Reference-anchor starting strength",
+        min_value=0.05,
+        max_value=0.60,
+        value=0.26,
+        step=0.01,
+    )
+
+    reference_strength_decay = st.slider(
+        "Reference-anchor strength decay",
+        min_value=0.00,
+        max_value=0.20,
+        value=0.04,
+        step=0.01,
+    )
+
+    reference_min_strength = st.slider(
+        "Reference-anchor minimum strength",
+        min_value=0.05,
+        max_value=0.40,
+        value=0.12,
+        step=0.01,
+    )
+
     st.warning(
-        "Reference matching tries to create a visually similar result. "
         "For real people, use images you own or have permission to use. "
-        "This version measures visual similarity, not guaranteed identity-level face matching."
+        "This version tries to stay closer to the reference image, but it does not guarantee identity-perfect matching."
     )
 
 run_button = st.button("Start Self-Refining Generation", type="primary")
@@ -407,9 +458,15 @@ if run_button:
         clip_model_id=clip_model_id,
         penalize_radial_artifacts=bool(penalize_radial_artifacts),
         exploration_candidates_per_iteration=int(exploration_candidates_per_iteration),
+        reference_anchor_candidates_per_iteration=int(reference_anchor_candidates_per_iteration),
         artifact_escape_threshold=float(artifact_escape_threshold),
         restart_when_all_candidates_have_artifacts=bool(restart_when_all_candidates_have_artifacts),
         enable_prompt_mutation=bool(enable_prompt_mutation),
+        portrait_reference_mode=bool(portrait_reference_mode),
+        keep_reference_anchor=bool(keep_reference_anchor),
+        reference_strength_start=float(reference_strength_start),
+        reference_strength_decay=float(reference_strength_decay),
+        reference_min_strength=float(reference_min_strength),
     )
 
     with st.spinner("Running self-refining generation..."):
