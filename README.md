@@ -438,3 +438,7 @@ Planned improvements:
 This project is intended for experimentation, portfolio visuals, and research-style image generation workflows.
 
 For real-person portraits, use only images you own or have permission to use.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
