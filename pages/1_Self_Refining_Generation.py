@@ -57,6 +57,9 @@ def display_iteration_history(history: list[dict]) -> None:
                 "prompt_alignment": item.get("prompt_alignment_score"),
                 "reference_similarity": item.get("reference_similarity"),
                 "clip_reference_similarity": item.get("clip_reference_similarity"),
+                "selected_prompt_label": item.get("selected_prompt_label"),
+                "selected_generation_kind": item.get("selected_generation_kind"),
+                "selection_reason": item.get("selection_reason"),
                 "best_image": item["best_image_path"],
             }
         )
@@ -65,6 +68,10 @@ def display_iteration_history(history: list[dict]) -> None:
 
     for item in history:
         with st.expander(f"Iteration {item['iteration']} — Best score: {item['best_score']}"):
+            st.write(f"**Selection reason:** {item.get('selection_reason')}")
+            st.write(f"**Selected prompt label:** {item.get('selected_prompt_label')}")
+            st.write(f"**Selected generation kind:** {item.get('selected_generation_kind')}")
+
             candidates = item["candidates"]
             cols = st.columns(min(3, len(candidates)))
 
@@ -73,6 +80,8 @@ def display_iteration_history(history: list[dict]) -> None:
                     st.image(candidate["image_path"], use_container_width=True)
                     st.caption(f"Final score: {candidate['final_score']}")
                     st.caption(f"Visual quality: {candidate['visual_quality_score']}")
+                    st.caption(f"Prompt label: {candidate.get('prompt_label')}")
+                    st.caption(f"Generation kind: {candidate.get('generation_kind')}")
 
                     if candidate.get("prompt_alignment_score") is not None:
                         st.caption(f"Prompt alignment: {candidate['prompt_alignment_score']}")
@@ -85,6 +94,12 @@ def display_iteration_history(history: list[dict]) -> None:
 
                     if candidate.get("radial_artifact_penalty"):
                         st.caption(f"Radial penalty: {candidate['radial_artifact_penalty']}")
+
+                    with st.expander("Prompt used"):
+                        st.write(candidate.get("prompt", ""))
+
+                    with st.expander("Negative prompt used"):
+                        st.write(candidate.get("negative_prompt", ""))
 
 
 st.title("🧠 Self-Refining Generation")
@@ -104,8 +119,8 @@ mode = st.radio(
 )
 
 st.info(
-    "Evaluator v2 can use visual heuristics plus optional CLIP-based prompt and reference matching. "
-    "CLIP is slower on the first run because the model may need to be downloaded."
+    "This page now supports prompt mutation, exploration candidates, optional CLIP-based evaluation, "
+    "and radial-artifact escape logic."
 )
 
 left_col, right_col = st.columns([1, 1])
@@ -230,8 +245,8 @@ with right_col:
     candidates_per_iteration = st.slider(
         "Candidates per iteration",
         min_value=1,
-        max_value=4,
-        value=2,
+        max_value=5,
+        value=3,
     )
 
     num_inference_steps = st.slider(
@@ -265,7 +280,7 @@ with right_col:
         step=0.01,
     )
 
-    st.subheader("Evaluator v2 Settings")
+    st.subheader("Evaluator Settings")
 
     default_profile_index = 3 if mode == "Match Reference Image" else 0
 
@@ -291,8 +306,36 @@ with right_col:
 
     penalize_radial_artifacts = st.checkbox(
         "Penalize eye/portal-like circular artifacts",
-        value=False,
-        help="Useful when the model gets stuck generating repeated rings or eye-like images.",
+        value=True,
+    )
+
+    artifact_escape_threshold = st.slider(
+        "Artifact escape threshold",
+        min_value=0.0,
+        max_value=60.0,
+        value=18.0,
+        step=1.0,
+    )
+
+    restart_when_all_candidates_have_artifacts = st.checkbox(
+        "Restart from fresh prompt if all candidates have artifacts",
+        value=True,
+    )
+
+    st.subheader("Prompt Mutation Settings")
+
+    enable_prompt_mutation = st.checkbox(
+        "Enable prompt mutation",
+        value=True,
+        help="Create several prompt variants so the loop does not get stuck in one visual pattern.",
+    )
+
+    exploration_candidates_per_iteration = st.slider(
+        "Fresh exploration candidates per iteration",
+        min_value=0,
+        max_value=3,
+        value=1,
+        help="How many candidates per iteration should be generated fresh from text instead of only refining the previous image.",
     )
 
 st.divider()
@@ -363,6 +406,10 @@ if run_button:
         use_clip=bool(use_clip),
         clip_model_id=clip_model_id,
         penalize_radial_artifacts=bool(penalize_radial_artifacts),
+        exploration_candidates_per_iteration=int(exploration_candidates_per_iteration),
+        artifact_escape_threshold=float(artifact_escape_threshold),
+        restart_when_all_candidates_have_artifacts=bool(restart_when_all_candidates_have_artifacts),
+        enable_prompt_mutation=bool(enable_prompt_mutation),
     )
 
     with st.spinner("Running self-refining generation..."):

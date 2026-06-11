@@ -14,6 +14,7 @@ from .generator import (
     generate_image,
     generate_image_from_image,
 )
+from .prompt_mutator import PromptVariant, build_prompt_variants
 
 
 RADIAL_ESCAPE_NEGATIVE_PROMPT = (
@@ -49,12 +50,11 @@ class RefinementConfig:
     clip_model_id: str = DEFAULT_CLIP_MODEL_ID
     penalize_radial_artifacts: bool = False
 
-    # Exploration settings.
-    # These are enabled by default to prevent the loop from getting stuck
-    # refining the same bad visual pattern.
     exploration_candidates_per_iteration: int = 1
     artifact_escape_threshold: float = 18.0
     restart_when_all_candidates_have_artifacts: bool = True
+
+    enable_prompt_mutation: bool = True
 
 
 def build_generation_config(config: RefinementConfig, seed: int, mode: str) -> GenerationConfig:
@@ -85,7 +85,56 @@ def effective_negative_prompt(config: RefinementConfig) -> str:
     if RADIAL_ESCAPE_NEGATIVE_PROMPT.lower() in config.negative_prompt.lower():
         return config.negative_prompt
 
+    if not config.negative_prompt.strip():
+        return RADIAL_ESCAPE_NEGATIVE_PROMPT
+
     return f"{config.negative_prompt}, {RADIAL_ESCAPE_NEGATIVE_PROMPT}"
+
+
+def build_iteration_prompt_variants(
+    config: RefinementConfig,
+    candidate_count: int,
+) -> list[PromptVariant]:
+    if not config.enable_prompt_mutation:
+        return [
+            PromptVariant(
+                label="base",
+                prompt=config.prompt,
+                negative_prompt=effective_negative_prompt(config),
+            )
+        ]
+
+    requested_count = max(candidate_count + 2, 5)
+
+    return build_prompt_variants(
+        prompt=config.prompt,
+        negative_prompt=effective_negative_prompt(config),
+        evaluation_profile=config.evaluation_profile,
+        num_variants=requested_count,
+        avoid_radial_artifacts=config.penalize_radial_artifacts,
+        include_base=True,
+    )
+
+
+def choose_prompt_variant(
+    prompt_variants: list[PromptVariant],
+    candidate_index: int,
+    is_fresh_candidate: bool,
+) -> PromptVariant:
+    if not prompt_variants:
+        return PromptVariant(label="base", prompt="", negative_prompt="")
+
+    if len(prompt_variants) == 1:
+        return prompt_variants[0]
+
+    if is_fresh_candidate:
+        # Exploration candidates skip the base prompt when possible.
+        index = 1 + (candidate_index % (len(prompt_variants) - 1))
+        return prompt_variants[index]
+
+    # Refinement candidates can still use base + mild diversity.
+    index = candidate_index % len(prompt_variants)
+    return prompt_variants[index]
 
 
 def is_image_file_path(value: Any) -> bool:
@@ -268,10 +317,10 @@ def generate_candidates_for_iteration(
     config: RefinementConfig,
     iteration_index: int,
     parent_image_path: str | None,
-) -> list[str]:
-    generated_paths = []
+) -> list[dict[str, Any]]:
+    generated_records: list[dict[str, Any]] = []
     candidate_count = max(1, config.candidates_per_iteration)
-    negative_prompt = effective_negative_prompt(config)
+    prompt_variants = build_iteration_prompt_variants(config, candidate_count)
 
     for candidate_index in range(candidate_count):
         seed = config.seed + iteration_index * 1000 + candidate_index
@@ -283,6 +332,12 @@ def generate_candidates_for_iteration(
             parent_image_path=parent_image_path,
         )
 
+        prompt_variant = choose_prompt_variant(
+            prompt_variants=prompt_variants,
+            candidate_index=candidate_index,
+            is_fresh_candidate=make_fresh_candidate or parent_image_path is None,
+        )
+
         if parent_image_path and not make_fresh_candidate:
             generation_config = build_generation_config(
                 config=config,
@@ -292,11 +347,14 @@ def generate_candidates_for_iteration(
 
             output = call_image_to_image_generator(
                 image_path=parent_image_path,
-                prompt=config.prompt,
-                negative_prompt=negative_prompt,
+                prompt=prompt_variant.prompt,
+                negative_prompt=prompt_variant.negative_prompt,
                 generation_config=generation_config,
                 strength=strength_for_iteration(config, iteration_index),
             )
+
+            generation_kind = "image-to-image-refinement"
+            candidate_strength = strength_for_iteration(config, iteration_index)
         else:
             generation_config = build_generation_config(
                 config=config,
@@ -305,15 +363,43 @@ def generate_candidates_for_iteration(
             )
 
             output = call_text_to_image_generator(
-                prompt=config.prompt,
-                negative_prompt=negative_prompt,
+                prompt=prompt_variant.prompt,
+                negative_prompt=prompt_variant.negative_prompt,
                 generation_config=generation_config,
             )
 
-        image_path = extract_image_path(output)
-        generated_paths.append(image_path)
+            generation_kind = "text-to-image-exploration"
+            candidate_strength = None
 
-    return generated_paths
+        image_path = extract_image_path(output)
+
+        generated_records.append(
+            {
+                "image_path": image_path,
+                "prompt": prompt_variant.prompt,
+                "negative_prompt": prompt_variant.negative_prompt,
+                "prompt_label": prompt_variant.label,
+                "generation_kind": generation_kind,
+                "strength": candidate_strength,
+            }
+        )
+
+    return generated_records
+
+
+def enrich_ranked_candidates(
+    ranked_candidates: list[dict[str, Any]],
+    generated_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    record_map = {record["image_path"]: record for record in generated_records}
+    enriched: list[dict[str, Any]] = []
+
+    for candidate in ranked_candidates:
+        extra = record_map.get(candidate["image_path"], {})
+        merged = {**candidate, **extra}
+        enriched.append(merged)
+
+    return enriched
 
 
 def select_next_parent(
@@ -351,20 +437,25 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
     parent_image_path = config.initial_image_path
 
     for iteration_index in range(max(1, config.iterations)):
-        candidate_paths = generate_candidates_for_iteration(
+        generated_records = generate_candidates_for_iteration(
             config=config,
             iteration_index=iteration_index,
             parent_image_path=parent_image_path,
         )
 
         ranked_candidates = rank_images(
-            image_paths=candidate_paths,
+            image_paths=[record["image_path"] for record in generated_records],
             reference_image_path=config.reference_image_path,
             prompt=config.prompt,
             evaluation_profile=config.evaluation_profile,
             use_clip=config.use_clip,
             clip_model_id=config.clip_model_id,
             penalize_radial_artifacts=config.penalize_radial_artifacts,
+        )
+
+        ranked_candidates = enrich_ranked_candidates(
+            ranked_candidates=ranked_candidates,
+            generated_records=generated_records,
         )
 
         selected_candidate, next_parent_image_path, selection_reason = select_next_parent(
@@ -381,15 +472,18 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
                 "next_parent_image_path": next_parent_image_path,
                 "selection_reason": selection_reason,
                 "reference_image_path": config.reference_image_path,
-                "strength": None
-                if parent_image_path is None
-                else strength_for_iteration(config, iteration_index),
+                "strength": candidate.get("strength"),
                 "evaluation_profile": config.evaluation_profile,
                 "use_clip": config.use_clip,
                 "clip_model_id": config.clip_model_id,
                 "penalize_radial_artifacts": config.penalize_radial_artifacts,
                 "exploration_candidates_per_iteration": config.exploration_candidates_per_iteration,
                 "artifact_escape_threshold": config.artifact_escape_threshold,
+                "enable_prompt_mutation": config.enable_prompt_mutation,
+                "prompt_label": candidate.get("prompt_label"),
+                "generation_kind": candidate.get("generation_kind"),
+                "prompt_used": candidate.get("prompt"),
+                "negative_prompt_used": candidate.get("negative_prompt"),
             }
 
             attach_scores_to_metadata(
@@ -413,11 +507,13 @@ def run_self_refinement(config: RefinementConfig) -> dict[str, Any]:
                 "best_image_path": selected_candidate["image_path"],
                 "best_score": selected_candidate["final_score"],
                 "visual_quality_score": selected_candidate["visual_quality_score"],
-                "prompt_alignment_score": selected_candidate["prompt_alignment_score"],
-                "reference_similarity": selected_candidate["reference_similarity"],
-                "clip_reference_similarity": selected_candidate["clip_reference_similarity"],
+                "prompt_alignment_score": selected_candidate.get("prompt_alignment_score"),
+                "reference_similarity": selected_candidate.get("reference_similarity"),
+                "clip_reference_similarity": selected_candidate.get("clip_reference_similarity"),
                 "selection_reason": selection_reason,
                 "next_parent_image_path": next_parent_image_path,
+                "selected_prompt_label": selected_candidate.get("prompt_label"),
+                "selected_generation_kind": selected_candidate.get("generation_kind"),
                 "candidates": ranked_candidates,
             }
         )
