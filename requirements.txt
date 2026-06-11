@@ -8,3 +8,4 @@ safetensors
 pillow
 python-dotenv
 requests
+numpy
